@@ -2,7 +2,7 @@
 
 
 ## Usage
-The R script takes the merged count table from the nf-core rnaseq pipeline as input (merged_gene_counts.txt).
+The R script takes the merged count table from the nf-core rnaseq pipeline as input (merged_gene_counts.txt, see example).
 To tidy up the sample names in the count file, please run the *format_merged_gene_counts.sh* to do so.
 As second input file you need the sample table in tsv format. See "sampleTableN.tsv" as example
 
