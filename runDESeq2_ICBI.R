@@ -73,7 +73,7 @@ contrast = c(cond_col, arguments$c1, arguments$c2)
 design_formula <- as.formula(paste0("~", cond_col))
 
 # Cutoff
-fdr_cutoff = arguments$fdr_cutoff
+fdr_cutoff = as.numeric(arguments$fdr_cutoff)
 
 ### Testdata
 sampleAnnotationTSV = "../tables/sample_sheet_rnaseq_pipeline.csv"
@@ -193,7 +193,7 @@ EnhancedVolcano(resIHW,
                 lab = resIHW$gene_name,
                 x = "log2FoldChange",
                 y = "pvalue",
-                pCutoff = 10e-5,
+                pCutoff = 1e-6,
                 FCcutoff = 2,
                 subtitle = "",
                 legendPosition = "right",
