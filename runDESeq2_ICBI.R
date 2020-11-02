@@ -167,7 +167,7 @@ lapply(c("BP", "MF"), function(ontology) {
                         mapping = "org.Hs.eg.db",
                         geneID = "ENSEMBL")
   write_tsv(topgoDE, file.path(results_dir, paste0(prefix, "_topGO_IHWsig_", ontology, ".tsv")))
-  write_xlsx(topgoDE, file.path(results_dir, paste0(prefix, "_topGO_IHWsig_", ontology, ".xlsx")))
+  write_xlsx(topgoDE %>% select(-genes), file.path(results_dir, paste0(prefix, "_topGO_IHWsig_", ontology, ".xlsx")))
 })
 
 
