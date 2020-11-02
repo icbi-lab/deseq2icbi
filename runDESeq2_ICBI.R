@@ -70,21 +70,21 @@ cond_col = arguments$condition_col
 replicate_col = arguments$replicate_col
 sample_col = arguments$sample_col
 contrast = c(cond_col, arguments$c1, arguments$c2)
-design_formula <- as.formula(paste0("~", cond_col))
 
 # Cutoff
 fdr_cutoff = as.numeric(arguments$fdr_cutoff)
 
 # ### Testdata
-# sampleAnnotationTSV = "../tables/sample_sheet_rnaseq_pipeline.csv"
-# readCountFile = "../data/10_rnaseq_pipeline/star/featurecounts.merged.counts.tsv"
-# results_dir = "../results"
-# contrast = c("group", "26_Sh", "Puro_Sh")
-# cond_col = "group"
-# sample_col = NULL
+# sampleAnnotationTSV = "testdata/sampleTableN.csv"
+# readCountFile = "testdata/merged_gene_counts.txt"
+# results_dir = "out"
+# contrast = c("treatment", "PFK158", "DMSO")
+# cond_col = "treatment"
+# sample_col = "sample"
 # replicate_col = "replicate"
 
 ############### Start processing
+design_formula <- as.formula(paste0("~", cond_col))
 sampleAnno <- read_csv(sampleAnnotationTSV)
 
 # Add sample col based on condition and replicate if sample col is not explicitly specified
@@ -157,7 +157,7 @@ write_xlsx(resIHWsig, file.path(results_dir, paste0(prefix, "_IHWsigGenes.xlsx")
 
 ###### Run TOPGO analysis
 # significant genes as DE gene, all genes as background
-remove_ensg_version = function(x) gsub("\\.*[0-9]*$", "", x)
+remove_ensg_version = function(x) gsub("\\.[0-9]*$", "", x)
 de_symbols <- remove_ensg_version(resIHWsig$Geneid)
 bg_symbols <- remove_ensg_version(rownames(dds)[rowSums(counts(dds)) > 0])
 
