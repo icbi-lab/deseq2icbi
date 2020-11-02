@@ -75,14 +75,14 @@ design_formula <- as.formula(paste0("~", cond_col))
 # Cutoff
 fdr_cutoff = as.numeric(arguments$fdr_cutoff)
 
-### Testdata
-sampleAnnotationTSV = "../tables/sample_sheet_rnaseq_pipeline.csv"
-readCountFile = "../data/10_rnaseq_pipeline/star/featurecounts.merged.counts.tsv"
-results_dir = "../results"
-contrast = c("group", "26_Sh", "Puro_Sh")
-cond_col = "group"
-sample_col = NULL
-replicate_col = "replicate"
+# ### Testdata
+# sampleAnnotationTSV = "../tables/sample_sheet_rnaseq_pipeline.csv"
+# readCountFile = "../data/10_rnaseq_pipeline/star/featurecounts.merged.counts.tsv"
+# results_dir = "../results"
+# contrast = c("group", "26_Sh", "Puro_Sh")
+# cond_col = "group"
+# sample_col = NULL
+# replicate_col = "replicate"
 
 ############### Start processing
 sampleAnno <- read_csv(sampleAnnotationTSV)
