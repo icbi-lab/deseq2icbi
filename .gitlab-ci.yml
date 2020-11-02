@@ -4,7 +4,7 @@ image: continuumio/miniconda3:latest
 # Install additional dependencies
 # procps-ng is required for nextflow to generate process statistics.
 before_script:
-  - conda env update -y --file env.yml
+  - conda env update --file env.yml
 
 # Execute some commands (e.g. `pytest` to execute python unit-tests,
 # or run a nextflow pipeline)
