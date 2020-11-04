@@ -24,6 +24,8 @@ Optional options:
   --plot_title=<title>          Title shown above plots. Is built from contrast per default.
   --prefix=<prefix>             Results file prefix. Is built from contrasts per default.
   --fdr_cutoff=<fdr>            False discovery rate for GO analysis and volcano plots [default: 0.1]
+  --gtf_file=<gtf>              Path to the GTF file used for featurecounts. If specified, a Biotype QC
+                                will be performed.
 ' -> doc
 
 library("conflicted")
@@ -43,10 +45,12 @@ library("readr")
 library("dplyr")
 conflict_prefer("select", "dplyr")
 conflict_prefer("filter", "dplyr")
+conflict_prefer("count", "dplyr")
 library("EnhancedVolcano")
 library("ggpubr")
 library("tibble")
 conflict_prefer("paste", "base")
+remove_ensg_version = function(x) gsub("\\.[0-9]*$", "", x)
 
 #### Set some parameters here
 
@@ -74,6 +78,9 @@ contrast = c(cond_col, arguments$c1, arguments$c2)
 # Cutoff
 fdr_cutoff = as.numeric(arguments$fdr_cutoff)
 
+# GTF for Biotype QC
+gtf_file = arguments$gtf_file
+
 # ### Testdata
 # sampleAnnotationTSV = "testdata/sampleTableN.csv"
 # readCountFile = "testdata/merged_gene_counts.txt"
@@ -82,6 +89,7 @@ fdr_cutoff = as.numeric(arguments$fdr_cutoff)
 # cond_col = "treatment"
 # sample_col = "sample"
 # replicate_col = "replicate"
+# gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
 
 ############### Start processing
 design_formula <- as.formula(paste0("~", cond_col))
@@ -94,9 +102,12 @@ if(is.null(sample_col)) {
 }
 
 
-count_mat <- read_tsv(readCountFile)
+count_mat <- read_tsv(readCountFile) %>%
+  mutate(Geneid= remove_ensg_version(Geneid))
 ensg_to_genesymbol = count_mat %>% select(Geneid, gene_name)
-count_mat = count_mat %>% select(-gene_name) %>% column_to_rownames("Geneid")
+count_mat = count_mat %>%
+  select(-gene_name) %>%
+  column_to_rownames("Geneid")
 
 dds <- DESeqDataSetFromMatrix(countData = count_mat,
                               colData = sampleAnno,
@@ -129,37 +140,48 @@ summary(resIHW)
 sum(resIHW$padj < 0.1, na.rm=TRUE)
 
 
-# # add HGNC Symbols as gene names
-# ann <- AnnotationDbi::select(org.Hs.eg.db,keys=rownames(resIHWordered),columns=c("SYMBOL","GENENAME"), keytype="ENSEMBL")
-# # remove duplicate annotation (main Symbol will be kept)
-# ann <- ann[!duplicated(ann$ENSEMBL),]
-#
-# # cbind to DESeq result
-# resIHWordered.annotated <- cbind(resIHWordered, ann$SYMBOL, ann$GENENAME)
-#
-# # make dataframe to export as xls
-# resIHWordered.annotated.df <- cbind(rownames(resIHWordered.annotated), as.data.frame(resIHWordered.annotated))
-# colnames(resIHWordered.annotated.df) <- c("ENSGENE_ID",colnames(resIHWordered.annotated.df[2:(length(resIHWordered.annotated.df)-2)]),"SYMBOL","DESCRIPTION")
-# # use ENSGENE_ID if no HGNC symbol available
-# resIHWordered.annotated.df$SYMBOL <- ifelse(is.na(resIHWordered.annotated.df$SYMBOL), paste(resIHWordered.annotated.df$ENSGENE_ID), resIHWordered.annotated.df$SYMBOL)
+# Filter for adjusted p-value < 0.1
+resIHWsig <- resIHW %>% filter(padj < fdr_cutoff)
 
-# write TSV and XLSX files
+###### Perform Biotype QC
+if(!is.null(gtf_file)) {
+  gtf = rtracklayer::import(gtf_file, feature.type="gene") %>%
+    as_tibble() %>%
+    mutate(gene_id = remove_ensg_version(gene_id))
+
+  count_before = nrow(resIHW)
+  resIHW = resIHW %>% left_join(select(gtf, gene_id, gene_type), by=c("Geneid"="gene_id"))
+  stopifnot("Number of genes should be the same after adding biotypes"= count_before == nrow(resIHW))
+  resIHWsig = resIHWsig %>% left_join(select(gtf, gene_id, gene_type), by=c("Geneid"="gene_id"))
+
+  biotype_counts = resIHWsig %>% group_by(gene_type) %>% count()
+
+  p = biotype_counts %>%
+    ggplot(aes(x=gene_type, y=n)) + geom_bar(stat='identity') + theme_bw() + coord_flip()
+  ggsave(file.path(results_dir, paste0(prefix, "_biotype_counts.png")), p)
+  write_tsv(biotype_counts, file.path(results_dir, paste0(prefix, "_biotype_counts.tsv")))
+
+}
+
+
+
+#### write results to TSV and XLSX files
 write_tsv(resIHW, file.path(results_dir, paste0(prefix, "_IHWallGenes.tsv")))
 write_xlsx(resIHW, file.path(results_dir, paste0(prefix, "_IHWallGenes.xlsx")))
 
-# Filter for adjusted p-value < 0.1
-resIHWsig <- resIHW %>% filter(padj < fdr_cutoff)
 
 write_tsv(resIHWsig, file.path(results_dir, paste0(prefix, "_IHWsigGenes.tsv")))
 write_xlsx(resIHWsig, file.path(results_dir, paste0(prefix, "_IHWsigGenes.xlsx")))
 
 
 
+
+
+
 ###### Run TOPGO analysis
 # significant genes as DE gene, all genes as background
-remove_ensg_version = function(x) gsub("\\.[0-9]*$", "", x)
-de_symbols <- remove_ensg_version(resIHWsig$Geneid)
-bg_symbols <- remove_ensg_version(rownames(dds)[rowSums(counts(dds)) > 0])
+de_symbols <- resIHWsig$Geneid
+bg_symbols <- rownames(dds)[rowSums(counts(dds)) > 0]
 
 lapply(c("BP", "MF"), function(ontology) {
   topgoDE <- topGOtable(de_symbols, bg_symbols,
