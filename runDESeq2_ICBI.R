@@ -125,7 +125,6 @@ dds <- dds[keep,]
 # save filtered count file
 write_tsv(counts(dds) %>% as_tibble(rownames = "Geneid"), file.path(results_dir, paste0(prefix, "_detectedGenesRawCounts_min_10_reads_in_one_condition.tsv")))
 
-exit
 # run DESeq
 dds <- DESeq(dds)
 
