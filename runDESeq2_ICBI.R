@@ -107,7 +107,7 @@ count_mat <- read_tsv(readCountFile) %>%
   mutate(Geneid= remove_ensg_version(Geneid))
 ensg_to_genesymbol = count_mat %>% select(Geneid, gene_name)
 count_mat = count_mat %>%
-  select(c(Geneid, starts_with(arguments$c1) | starts_with(arguments$c2))) %>%
+  select(c(Geneid, sampleAnno$sample)) %>%
   column_to_rownames("Geneid")
 
 dds <- DESeqDataSetFromMatrix(countData = count_mat,
