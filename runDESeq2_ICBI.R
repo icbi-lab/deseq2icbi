@@ -55,7 +55,7 @@ remove_ensg_version = function(x) gsub("\\.[0-9]*$", "", x)
 #### Set some parameters here
 
 # Input and output
-sampleAnnotationTSV <- arguments$sample_sheet
+sampleAnnotationCSV <- arguments$sample_sheet
 readCountFile <- arguments$count_table
 results_dir = arguments$result_dir
 
@@ -82,7 +82,7 @@ fdr_cutoff = as.numeric(arguments$fdr_cutoff)
 gtf_file = arguments$gtf_file
 
 # ### Testdata
-# sampleAnnotationTSV = "testdata/sampleTableN.csv"
+# sampleAnnotationCSV = "testdata/sampleTableN.csv"
 # readCountFile = "testdata/merged_gene_counts.txt"
 # results_dir = "out"
 # contrast = c("treatment", "PFK158", "DMSO")
@@ -93,7 +93,8 @@ gtf_file = arguments$gtf_file
 
 ############### Start processing
 design_formula <- as.formula(paste0("~", cond_col))
-sampleAnno <- read_csv(sampleAnnotationTSV)
+sampleAnno <- read_csv(sampleAnnotationCSV) %>%
+  filter(get(cond_col) == arguments$c1 | get(cond_col) == arguments$c2)
 
 # Add sample col based on condition and replicate if sample col is not explicitly specified
 if(is.null(sample_col)) {
@@ -106,7 +107,7 @@ count_mat <- read_tsv(readCountFile) %>%
   mutate(Geneid= remove_ensg_version(Geneid))
 ensg_to_genesymbol = count_mat %>% select(Geneid, gene_name)
 count_mat = count_mat %>%
-  select(-gene_name) %>%
+  select(c(Geneid, starts_with(arguments$c1) | starts_with(arguments$c2))) %>%
   column_to_rownames("Geneid")
 
 dds <- DESeqDataSetFromMatrix(countData = count_mat,
@@ -122,7 +123,7 @@ keep <- rowSums(counts(collapseReplicates(dds, dds[[cond_col]]))) >= 10
 dds <- dds[keep,]
 
 # save filtered count file
-write_tsv(counts(dds) %>% as_tibble(), file.path(results_dir, paste0(prefix, "_detectedGenesRawCounts_min_10_reads_in_one_condition.tsv")))
+write_tsv(counts(dds) %>% as_tibble(rownames = NA), file.path(results_dir, paste0(prefix, "_detectedGenesRawCounts_min_10_reads_in_one_condition.tsv")))
 
 # run DESeq
 dds <- DESeq(dds)
