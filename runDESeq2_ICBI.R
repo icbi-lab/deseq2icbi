@@ -99,9 +99,8 @@ sampleAnno <- read_csv(sampleAnnotationCSV) %>%
 # Add sample col based on condition and replicate if sample col is not explicitly specified
 if(is.null(sample_col)) {
   sample_col = "sample"
-  sampleAnno = sampleAnno %>% mutate(sample=paste0(cond_col, "_R", replicate_col))
+  sampleAnno = sampleAnno %>% mutate(sample=paste0(sampleAnno[[cond_col]], "_R", sampleAnno[[replicate_col]]))
 }
-
 
 count_mat <- read_tsv(readCountFile) %>%
   mutate(Geneid= remove_ensg_version(Geneid))
