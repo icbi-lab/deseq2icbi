@@ -1,9 +1,9 @@
 #!/usr/bin/env Rscript
-'runDESeq2_ICBI_p.R
+'runDESeq2_ICBI.R
 
 Usage:
-  runDESeq2_ICBI_p.R <sample_sheet> <count_table> --result_dir=<res_dir> --c1=<c1> --c2=<c2> [options]
-  runDESeq2_ICBI_p.R --help
+  runDESeq2_ICBI.R <sample_sheet> <count_table> --result_dir=<res_dir> --c1=<c1> --c2=<c2> [options]
+  runDESeq2_ICBI.R --help
 
 Arguments:
   <sample_sheet>                CSV file with the sample annotations.
