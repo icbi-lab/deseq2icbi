@@ -21,6 +21,8 @@ Optional options:
   --condition_col=<cond_col>    Column in sample annotation that contains the condition [default: group]
   --sample_col=<sample_col>     Column in sample annotation that contains the sample names
                                 (needs to match the colnames of the count table). Overrides replicate_col.
+  --paired_grp=<paired_grp>     Column that conatins the name of the paired samples, when dealing with
+                                paired data.
   --plot_title=<title>          Title shown above plots. Is built from contrast per default.
   --prefix=<prefix>             Results file prefix. Is built from contrasts per default.
   --fdr_cutoff=<fdr>            False discovery rate for GO analysis and volcano plots [default: 0.1]
@@ -58,6 +60,7 @@ remove_ensg_version = function(x) gsub("\\.[0-9]*$", "", x)
 sampleAnnotationCSV <- arguments$sample_sheet
 readCountFile <- arguments$count_table
 results_dir = arguments$result_dir
+paired_grp <- arguments$paired_grp
 
 # prefix and plot title
 prefix <- arguments$prefix
@@ -92,16 +95,20 @@ gtf_file = arguments$gtf_file
 # gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
 
 ############### Start processing
-design_formula <- as.formula(paste0("~", cond_col))
+if(is.null(paired_grp)) {
+  design_formula <- as.formula(paste0("~", cond_col))
+} else {
+  design_formula <- as.formula(paste0("~", paired_grp , " + ", cond_col))
+}
+
 sampleAnno <- read_csv(sampleAnnotationCSV) %>%
   filter(get(cond_col) == arguments$c1 | get(cond_col) == arguments$c2)
 
 # Add sample col based on condition and replicate if sample col is not explicitly specified
 if(is.null(sample_col)) {
   sample_col = "sample"
-  sampleAnno = sampleAnno %>% mutate(sample=paste0(cond_col, "_R", replicate_col))
+  sampleAnno = sampleAnno %>% mutate(sample=paste0(sampleAnno[[cond_col]], "_R", sampleAnno[[replicate_col]]))
 }
-
 
 count_mat <- read_tsv(readCountFile) %>%
   mutate(Geneid= remove_ensg_version(Geneid))
