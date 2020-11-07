@@ -26,6 +26,7 @@ Optional options:
   --plot_title=<title>          Title shown above plots. Is built from contrast per default.
   --prefix=<prefix>             Results file prefix. Is built from contrasts per default.
   --fdr_cutoff=<fdr>            False discovery rate for GO analysis and volcano plots [default: 0.1]
+  --fc_cutoff=<log2 fc cutoff>  Fold change (log2) cutoff for volcano plots [default: 1]
   --gtf_file=<gtf>              Path to the GTF file used for featurecounts. If specified, a Biotype QC
                                 will be performed.
 ' -> doc
@@ -80,6 +81,7 @@ contrast = c(cond_col, arguments$c1, arguments$c2)
 
 # Cutoff
 fdr_cutoff = as.numeric(arguments$fdr_cutoff)
+fc_cutoff = as.numeric(arguments$fc_cutoff)
 
 # GTF for Biotype QC
 gtf_file = arguments$gtf_file
@@ -227,7 +229,7 @@ EnhancedVolcano(resIHW,
                 x = "log2FoldChange",
                 y = "pvalue",
                 pCutoff = 1e-6,
-                FCcutoff = 2,
+                FCcutoff = fc_cutoff,
                 subtitle = "",
                 legendPosition = "right",
                 title = plotTitle)
@@ -239,7 +241,7 @@ EnhancedVolcano(resIHW,
                 x = "log2FoldChange",
                 y = "padj",
                 pCutoff = fdr_cutoff,
-                FCcutoff = 2,
+                FCcutoff = fc_cutoff,
                 subtitle = "",
                 legendPosition = "right",
                 title = plotTitle)
