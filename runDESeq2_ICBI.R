@@ -1,9 +1,9 @@
 #!/usr/bin/env Rscript
-'runDESeq2_ICBI.R
+'runDESeq2_ICBI_p.R
 
 Usage:
-  runDESeq2_ICBI.R <sample_sheet> <count_table> --result_dir=<res_dir> --c1=<c1> --c2=<c2> [options]
-  runDESeq2_ICBI.R --help
+  runDESeq2_ICBI_p.R <sample_sheet> <count_table> --result_dir=<res_dir> --c1=<c1> --c2=<c2> [options]
+  runDESeq2_ICBI_p.R --help
 
 Arguments:
   <sample_sheet>                CSV file with the sample annotations.
@@ -26,6 +26,7 @@ Optional options:
   --plot_title=<title>          Title shown above plots. Is built from contrast per default.
   --prefix=<prefix>             Results file prefix. Is built from contrasts per default.
   --fdr_cutoff=<fdr>            False discovery rate for GO analysis and volcano plots [default: 0.1]
+  --fc_cutoff=<log2 fc cutoff>  Fold change (log2) cutoff for volcano plots [default: 1]
   --gtf_file=<gtf>              Path to the GTF file used for featurecounts. If specified, a Biotype QC
                                 will be performed.
 ' -> doc
@@ -80,6 +81,7 @@ contrast = c(cond_col, arguments$c1, arguments$c2)
 
 # Cutoff
 fdr_cutoff = as.numeric(arguments$fdr_cutoff)
+fc_cutoff = as.numeric(arguments$fc_cutoff)
 
 # GTF for Biotype QC
 gtf_file = arguments$gtf_file
@@ -131,6 +133,10 @@ dds <- dds[keep,]
 
 # save filtered count file
 write_tsv(counts(dds) %>% as_tibble(rownames = "Geneid"), file.path(results_dir, paste0(prefix, "_detectedGenesRawCounts_min_10_reads_in_one_condition.tsv")))
+
+# save normalized filtered count file
+dds <- estimateSizeFactors(dds)
+write_tsv(counts(dds, normalized=TRUE) %>% as_tibble(rownames = "Geneid"), file.path(results_dir, paste0(prefix, "_detectedGenesNormalizedCounts_min_10_reads_in_one_condition.tsv")))
 
 # run DESeq
 dds <- DESeq(dds)
@@ -205,7 +211,6 @@ lapply(c("BP", "MF"), function(ontology) {
 
 ########### PCA plot
 vsd <- vst(dds, blind=FALSE)
-dds <- estimateSizeFactors(dds)
 
 
 p <- plotPCA(vsd, intgroup=c(cond_col)) +
@@ -224,7 +229,7 @@ EnhancedVolcano(resIHW,
                 x = "log2FoldChange",
                 y = "pvalue",
                 pCutoff = 1e-6,
-                FCcutoff = 2,
+                FCcutoff = fc_cutoff,
                 subtitle = "",
                 legendPosition = "right",
                 title = plotTitle)
@@ -236,7 +241,7 @@ EnhancedVolcano(resIHW,
                 x = "log2FoldChange",
                 y = "padj",
                 pCutoff = fdr_cutoff,
-                FCcutoff = 2,
+                FCcutoff = fc_cutoff,
                 subtitle = "",
                 legendPosition = "right",
                 title = plotTitle)
