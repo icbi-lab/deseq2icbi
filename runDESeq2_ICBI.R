@@ -1,9 +1,9 @@
 #!/usr/bin/env Rscript
-'runDESeq2_ICBI.R
+'runDESeq2_ICBI_p.R
 
 Usage:
-  runDESeq2_ICBI.R <sample_sheet> <count_table> --result_dir=<res_dir> --c1=<c1> --c2=<c2> [options]
-  runDESeq2_ICBI.R --help
+  runDESeq2_ICBI_p.R <sample_sheet> <count_table> --result_dir=<res_dir> --c1=<c1> --c2=<c2> [options]
+  runDESeq2_ICBI_p.R --help
 
 Arguments:
   <sample_sheet>                CSV file with the sample annotations.
@@ -132,6 +132,10 @@ dds <- dds[keep,]
 # save filtered count file
 write_tsv(counts(dds) %>% as_tibble(rownames = "Geneid"), file.path(results_dir, paste0(prefix, "_detectedGenesRawCounts_min_10_reads_in_one_condition.tsv")))
 
+# save normalized filtered count file
+dds <- estimateSizeFactors(dds)
+write_tsv(counts(dds, normalized=TRUE) %>% as_tibble(rownames = "Geneid"), file.path(results_dir, paste0(prefix, "_detectedGenesNormalizedCounts_min_10_reads_in_one_condition.tsv")))
+
 # run DESeq
 dds <- DESeq(dds)
 
@@ -205,7 +209,6 @@ lapply(c("BP", "MF"), function(ontology) {
 
 ########### PCA plot
 vsd <- vst(dds, blind=FALSE)
-dds <- estimateSizeFactors(dds)
 
 
 p <- plotPCA(vsd, intgroup=c(cond_col)) +
