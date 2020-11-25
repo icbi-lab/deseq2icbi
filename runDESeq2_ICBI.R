@@ -256,7 +256,7 @@ ggsave(file.path(results_dir, paste0(prefix, "_PCA.png")), plot = p)
 
 
 ########## Volcano plot
-png(filename =  file.path(results_dir, paste0(prefix, "_vulcano.png")), width = 650, height = 650, units = "px")
+png(filename =  file.path(results_dir, paste0(prefix, "_volcano.png")), width = 650, height = 650, units = "px")
 EnhancedVolcano(resIHW,
                 lab = resIHW$gene_name,
                 x = "log2FoldChange",
@@ -268,7 +268,7 @@ EnhancedVolcano(resIHW,
                 title = plotTitle)
 dev.off()
 
-png(filename =  file.path(results_dir, paste0(prefix, "_vulcano_padj.png")), width = 650, height = 650, units = "px")
+png(filename =  file.path(results_dir, paste0(prefix, "_volcano_padj.png")), width = 650, height = 650, units = "px")
 EnhancedVolcano(resIHW,
                 lab = resIHW$gene_name,
                 x = "log2FoldChange",
