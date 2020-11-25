@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-'runDESeq2_ICBI_p.R
+'runDESeq2_ICBI.R
 
 Usage:
   runDESeq2_ICBI_p.R <sample_sheet> <count_table> --result_dir=<res_dir> --c1=<c1> --c2=<c2> [options]
@@ -43,6 +43,8 @@ library("org.Hs.eg.db")
 library("ggplot2")
 library("pcaExplorer")
 library("topGO")
+library("clusterProfiler")
+library("ReactomePA")
 library("writexl")
 library("readr")
 library("dplyr")
@@ -138,6 +140,9 @@ write_tsv(counts(dds) %>% as_tibble(rownames = "Geneid"), file.path(results_dir,
 dds <- estimateSizeFactors(dds)
 write_tsv(counts(dds, normalized=TRUE) %>% as_tibble(rownames = "Geneid"), file.path(results_dir, paste0(prefix, "_detectedGenesNormalizedCounts_min_10_reads_in_one_condition.tsv")))
 
+# Set the reference to the contrast level 2 (baseline) given by the --c2 option
+dds$genotype = relevel( dds[[cond_col]], arguments$c2)
+
 # run DESeq
 dds <- DESeq(dds)
 
@@ -156,6 +161,9 @@ sum(resIHW$padj < 0.1, na.rm=TRUE)
 
 # Filter for adjusted p-value < 0.1
 resIHWsig <- resIHW %>% filter(padj < fdr_cutoff)
+
+# significant genes as DE gene FDR < fdr_cutoff & abs(logfoldchange) > fc_cutoff , all genes as background
+resIHWsig_fc <- resIHWsig %>% filter(abs(log2FoldChange) > fc_cutoff)
 
 ###### Perform Biotype QC
 if(!is.null(gtf_file)) {
@@ -177,24 +185,18 @@ if(!is.null(gtf_file)) {
 
 }
 
-
+#### result list
+de_res_list <- list(IHWallGenes = resIHW, IHWsigGenes = resIHWsig, IHWsigFCgenes = resIHWsig_fc)
 
 #### write results to TSV and XLSX files
-write_tsv(resIHW, file.path(results_dir, paste0(prefix, "_IHWallGenes.tsv")))
-write_xlsx(resIHW, file.path(results_dir, paste0(prefix, "_IHWallGenes.xlsx")))
-
-
-write_tsv(resIHWsig, file.path(results_dir, paste0(prefix, "_IHWsigGenes.tsv")))
-write_xlsx(resIHWsig, file.path(results_dir, paste0(prefix, "_IHWsigGenes.xlsx")))
-
-
-
-
-
+lapply(names(de_res_list), function(res) {
+  fc_suffix <- ifelse(res == "IHWsigFCgenes", paste0("_", 2^fc_cutoff, "_fold"), "")
+  write_tsv(de_res_list[[res]], file.path(results_dir, paste0(prefix, "_", res, fc_suffix, ".tsv")))
+  write_xlsx(resIHW, file.path(results_dir, paste0(prefix, "_" , res, fc_suffix, ".xlsx")))
+})
 
 ###### Run TOPGO analysis
-# significant genes as DE gene, all genes as background
-de_symbols <- resIHWsig$Geneid
+de_symbols <- resIHWsig_fc$Geneid
 bg_symbols <- rownames(dds)[rowSums(counts(dds)) > 0]
 
 lapply(c("BP", "MF"), function(ontology) {
@@ -207,6 +209,37 @@ lapply(c("BP", "MF"), function(ontology) {
 })
 
 
+##### Run Pathway enrichment analysis
+hgnc_to_entrez = AnnotationDbi::select(org.Hs.eg.db, resIHW %>% pull("gene_name") %>% unique(), keytype="SYMBOL", columns=c("ENTREZID"))
+resIHW_entrez = resIHW %>%  inner_join(hgnc_to_entrez, by=c("gene_name"="SYMBOL"))
+universe = resIHW_entrez %>% pull("ENTREZID") %>% unique()
+resIHWsig_fc_entrez <- resIHWsig_fc %>%  inner_join(hgnc_to_entrez, by=c("gene_name"="SYMBOL"))
+
+enrich_kegg <- enrichKEGG(gene         = resIHWsig_fc_entrez$ENTREZID,
+                          universe     = universe,
+                          organism     = 'hsa',
+                          pvalueCutoff = 0.05)
+
+enrich_kegg_readable <- setReadable(enrich_kegg, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+kegg_enrich_res_tab = enrich_kegg_readable@result %>% as_tibble()
+write_tsv(kegg_enrich_res_tab, file.path(results_dir, paste0(prefix, "_kegg_ernich.tsv")))
+
+enrich_reactome <- enrichPathway(gene = resIHWsig_fc_entrez$ENTREZID,
+                                 organism = "human",
+                                 universe = universe,
+                                 pvalueCutoff = 0.05, 
+                                 readable=TRUE)
+reactome_enrich_res_tab = enrich_reactome@result %>% as_tibble()
+write_tsv(reactome_enrich_res_tab, file.path(results_dir, paste0(prefix, "_reactome_ernich.tsv")))
+
+enrich_wp <- enrichWP(gene = resIHWsig_fc_entrez$ENTREZID,
+                      universe     = universe,
+                      organism     = 'Homo sapiens',
+                      pvalueCutoff = 0.05)
+
+enrich_wp_readable <- setReadable(enrich_wp, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+wp_enrich_res_tab = enrich_wp_readable@result %>% as_tibble() 
+write_tsv(wp_enrich_res_tab, file.path(results_dir, paste0(prefix, "_wp_ernich.tsv")))
 
 
 ########### PCA plot
