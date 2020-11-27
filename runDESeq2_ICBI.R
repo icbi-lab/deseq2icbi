@@ -192,7 +192,7 @@ de_res_list <- list(IHWallGenes = resIHW, IHWsigGenes = resIHWsig, IHWsigFCgenes
 lapply(names(de_res_list), function(res) {
   fc_suffix <- ifelse(res == "IHWsigFCgenes", paste0("_", 2^fc_cutoff, "_fold"), "")
   write_tsv(de_res_list[[res]], file.path(results_dir, paste0(prefix, "_", res, fc_suffix, ".tsv")))
-  write_xlsx(resIHW, file.path(results_dir, paste0(prefix, "_" , res, fc_suffix, ".xlsx")))
+  write_xlsx(de_res_list[[res]], file.path(results_dir, paste0(prefix, "_" , res, fc_suffix, ".xlsx")))
 })
 
 ###### Run TOPGO analysis
