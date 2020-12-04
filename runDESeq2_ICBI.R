@@ -55,6 +55,7 @@ library("EnhancedVolcano")
 library("ggpubr")
 library("tibble")
 conflict_prefer("paste", "base")
+conflict_prefer("rename", "dplyr")
 remove_ensg_version = function(x) gsub("\\.[0-9]*$", "", x)
 
 #### Set some parameters here
@@ -116,7 +117,10 @@ if(is.null(sample_col)) {
 
 count_mat <- read_tsv(readCountFile) %>%
   mutate(Geneid= remove_ensg_version(Geneid))
+
 ensg_to_genesymbol = count_mat %>% select(Geneid, gene_name)
+ensg_to_desc = AnnotationDbi::select(org.Hs.eg.db, count_mat$Geneid %>% unique(), keytype = "ENSEMBL", columns = c("GENENAME")) 
+
 count_mat = count_mat %>%
   select(c(Geneid, sampleAnno$sample)) %>%
   column_to_rownames("Geneid")
@@ -154,6 +158,8 @@ nc <- counts(dds, normalized=T)
 resIHW <- results(dds, filterFun=ihw, contrast=contrast) %>%
   as_tibble(rownames = "Geneid") %>%
   left_join(ensg_to_genesymbol) %>%
+  left_join(ensg_to_desc, by = c("Geneid" = "ENSEMBL") ) %>%
+  rename(genes_description = GENENAME) %>%
   arrange(pvalue)
 summary(resIHW)
 sum(resIHW$padj < 0.1, na.rm=TRUE)
