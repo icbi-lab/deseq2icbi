@@ -122,7 +122,7 @@ ensg_to_genesymbol = count_mat %>% select(Geneid, gene_name)
 ensg_to_desc = AnnotationDbi::select(org.Hs.eg.db, count_mat$Geneid %>% unique(), keytype = "ENSEMBL", columns = c("GENENAME")) 
 
 count_mat = count_mat %>%
-  select(c(Geneid, sampleAnno$sample)) %>%
+  select(c(Geneid, sampleAnno[[sample_col]])) %>%
   column_to_rownames("Geneid")
 
 dds <- DESeqDataSetFromMatrix(countData = count_mat,
