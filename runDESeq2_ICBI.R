@@ -252,6 +252,24 @@ enrich_wp_readable <- setReadable(enrich_wp, OrgDb = org.Hs.eg.db, keyType="ENTR
 wp_enrich_res_tab = enrich_wp_readable@result %>% as_tibble() 
 write_tsv(wp_enrich_res_tab, file.path(results_dir, paste0(prefix, "_wp_ernich.tsv")))
 
+## Run GO enrichment analysis 
+enrich_go <- enrichGO(gene = resIHWsig_fc_entrez$ENTREZID, 
+                universe = universe,
+                keyType = "ENTREZID",
+                OrgDb = org.Hs.eg.db, 
+                ont = "BP", 
+                pAdjustMethod = "BH", 
+                qvalueCutoff = 0.05,
+                minGSSize = 10,
+                readable = TRUE)
+
+## Output results from GO analysis to a table
+go_enrich_res_tab <- enrich_go@result %>% as_tibble()
+
+write_tsv(go_enrich_res_tab, file.path(results_dir, paste0(prefix, "_go_ernich.tsv")))
+
+p <- dotplot(enrich_go, showCategory=50)
+ggsave(file.path(results_dir, paste0(prefix, "_go_enrich_dotplot.png")), plot = p, width = 10, height = 10)
 
 ########### PCA plot
 vsd <- vst(dds, blind=FALSE)
