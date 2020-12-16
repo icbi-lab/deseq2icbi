@@ -226,6 +226,7 @@ resIHW_entrez = resIHW %>%  inner_join(hgnc_to_entrez, by=c("gene_name"="SYMBOL"
 universe = resIHW_entrez %>% pull("ENTREZID") %>% unique()
 resIHWsig_fc_entrez <- resIHWsig_fc %>%  inner_join(hgnc_to_entrez, by=c("gene_name"="SYMBOL"))
 
+## Run kegg pathways enrichment analysis 
 enrich_kegg <- enrichKEGG(gene         = resIHWsig_fc_entrez$ENTREZID,
                           universe     = universe,
                           organism     = 'hsa',
@@ -235,6 +236,12 @@ enrich_kegg_readable <- setReadable(enrich_kegg, OrgDb = org.Hs.eg.db, keyType="
 kegg_enrich_res_tab = enrich_kegg_readable@result %>% as_tibble()
 write_tsv(kegg_enrich_res_tab, file.path(results_dir, paste0(prefix, "_kegg_ernich.tsv")))
 
+## create a dotplot for enrichKEGG 
+p <- dotplot(enrich_keagg, showCategory=50)
+ggsave(file.path(results_dir, paste0(prefix, "_kegg_enrich_dotplot.png")), plot = p, width = 10, height = 10)
+
+
+## Run reactome pathways enrichment analysis 
 enrich_reactome <- enrichPathway(gene = resIHWsig_fc_entrez$ENTREZID,
                                  organism = "human",
                                  universe = universe,
@@ -243,6 +250,11 @@ enrich_reactome <- enrichPathway(gene = resIHWsig_fc_entrez$ENTREZID,
 reactome_enrich_res_tab = enrich_reactome@result %>% as_tibble()
 write_tsv(reactome_enrich_res_tab, file.path(results_dir, paste0(prefix, "_reactome_ernich.tsv")))
 
+## create a dotplot for enrichPathway (reactome)
+p <- dotplot(enrich_reactome, showCategory=50)
+ggsave(file.path(results_dir, paste0(prefix, "_reactome_enrich_dotplot.png")), plot = p, width = 15, height = 10)
+
+## Run wiki pathways enrichment analysis 
 enrich_wp <- enrichWP(gene = resIHWsig_fc_entrez$ENTREZID,
                       universe     = universe,
                       organism     = 'Homo sapiens',
@@ -251,6 +263,10 @@ enrich_wp <- enrichWP(gene = resIHWsig_fc_entrez$ENTREZID,
 enrich_wp_readable <- setReadable(enrich_wp, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
 wp_enrich_res_tab = enrich_wp_readable@result %>% as_tibble() 
 write_tsv(wp_enrich_res_tab, file.path(results_dir, paste0(prefix, "_wp_ernich.tsv")))
+
+## create a dotplot for enrichWP
+p <- dotplot(enrich_wp, showCategory=50)
+ggsave(file.path(results_dir, paste0(prefix, "_wp_enrich_dotplot.png")), plot = p, width = 10, height = 10)
 
 ## Run GO enrichment analysis 
 enrich_go <- enrichGO(gene = resIHWsig_fc_entrez$ENTREZID, 
@@ -265,9 +281,9 @@ enrich_go <- enrichGO(gene = resIHWsig_fc_entrez$ENTREZID,
 
 ## Output results from GO analysis to a table
 go_enrich_res_tab <- enrich_go@result %>% as_tibble()
-
 write_tsv(go_enrich_res_tab, file.path(results_dir, paste0(prefix, "_go_ernich.tsv")))
 
+## create a dotplot for enrichGO
 p <- dotplot(enrich_go, showCategory=50)
 ggsave(file.path(results_dir, paste0(prefix, "_go_enrich_dotplot.png")), plot = p, width = 10, height = 10)
 
