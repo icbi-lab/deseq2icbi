@@ -145,7 +145,7 @@ dds <- estimateSizeFactors(dds)
 write_tsv(counts(dds, normalized=TRUE) %>% as_tibble(rownames = "Geneid"), file.path(results_dir, paste0(prefix, "_detectedGenesNormalizedCounts_min_10_reads_in_one_condition.tsv")))
 
 # Set the reference to the contrast level 2 (baseline) given by the --c2 option
-dds$genotype = relevel( dds[[cond_col]], arguments$c2)
+dds[[cond_col]] = relevel( dds[[cond_col]], arguments$c2)
 
 # run DESeq
 dds <- DESeq(dds)
@@ -162,14 +162,19 @@ resIHW <- results(dds, filterFun=ihw, contrast=contrast) %>%
   rename(genes_description = GENENAME) %>%
   arrange(pvalue)
 summary(resIHW)
-sum(resIHW$padj < 0.1, na.rm=TRUE)
+sum(resIHW$padj < fdr_cutoff, na.rm=TRUE)
 
 
-# Filter for adjusted p-value < 0.1
+# Filter for adjusted p-value < fdr_cutoff
 resIHWsig <- resIHW %>% filter(padj < fdr_cutoff)
 
 # significant genes as DE gene FDR < fdr_cutoff & abs(logfoldchange) > fc_cutoff , all genes as background
 resIHWsig_fc <- resIHWsig %>% filter(abs(log2FoldChange) > fc_cutoff)
+
+# Stop here if we do not have any DE genes
+if(nrow(resIHWsig_fc) < 0) {
+  stop("NO significant DE genes found: check fc_cutoff and fdr_cutoff!")
+}
 
 ###### Perform Biotype QC
 if(!is.null(gtf_file)) {
