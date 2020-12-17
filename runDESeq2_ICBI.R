@@ -119,7 +119,8 @@ count_mat <- read_tsv(readCountFile) %>%
   mutate(Geneid= remove_ensg_version(Geneid))
 
 ensg_to_genesymbol = count_mat %>% select(Geneid, gene_name)
-ensg_to_desc = AnnotationDbi::select(org.Hs.eg.db, count_mat$Geneid %>% unique(), keytype = "ENSEMBL", columns = c("GENENAME")) 
+ensg_to_desc = AnnotationDbi::select(org.Hs.eg.db, count_mat$Geneid %>% unique(), keytype = "ENSEMBL", columns = c("GENENAME")) %>%
+  distinct(across(ENSEMBL), .keep_all = TRUE)
 
 count_mat = count_mat %>%
   select(c(Geneid, sampleAnno[[sample_col]])) %>%
