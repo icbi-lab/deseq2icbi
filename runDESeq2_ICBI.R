@@ -245,12 +245,14 @@ p <- dotplot(enrich_kegg, showCategory=50)
 ggsave(file.path(results_dir, paste0(prefix, "_kegg_enrich_dotplot.png")), plot = p, width = 10, height = 10)
 
 ## create a cnetplot for erichKEGG
-p <- cnetplot(enrich_kegg_readable,
-              categorySize="pvalue",
-              showCategory = 5,
-              foldChange=de_foldchanges,
-              vertex.label.font=6)
-ggsave(file.path(results_dir, paste0(prefix, "_kegg_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
+if (length(kegg_enrich_res_tab) > 1) {
+  p <- cnetplot(enrich_kegg_readable,
+                categorySize="pvalue",
+                showCategory = 5,
+                foldChange=de_foldchanges,
+                vertex.label.font=6)
+  ggsave(file.path(results_dir, paste0(prefix, "_kegg_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
+}
 
 ## Run reactome pathways enrichment analysis 
 enrich_reactome <- enrichPathway(gene = resIHWsig_fc_entrez$ENTREZID,
@@ -266,13 +268,14 @@ p <- dotplot(enrich_reactome, showCategory=50)
 ggsave(file.path(results_dir, paste0(prefix, "_reactome_enrich_dotplot.png")), plot = p, width = 15, height = 10)
 
 ## create a cnetplot for erichPathway (reactome)
-p <- cnetplot(enrich_reactome,
-              categorySize="pvalue",
-              showCategory = 5,
-              foldChange=de_foldchanges,
-              vertex.label.font=6)
-ggsave(file.path(results_dir, paste0(prefix, "_reactome_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
-
+if (length(reactome_enrich_res_tab) > 1) {
+  p <- cnetplot(enrich_reactome,
+                categorySize="pvalue",
+                showCategory = 5,
+                foldChange=de_foldchanges,
+                vertex.label.font=6)
+  ggsave(file.path(results_dir, paste0(prefix, "_reactome_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
+}
 
 ## Run wiki pathways enrichment analysis 
 enrich_wp <- enrichWP(gene = resIHWsig_fc_entrez$ENTREZID,
@@ -289,12 +292,14 @@ p <- dotplot(enrich_wp, showCategory=50)
 ggsave(file.path(results_dir, paste0(prefix, "_wp_enrich_dotplot.png")), plot = p, width = 10, height = 10)
 
 ## create a cnetplot for erichWP
-p <- cnetplot(enrich_wp_readable,
-              categorySize="pvalue",
-              showCategory = 5,
-              foldChange=de_foldchanges,
-              vertex.label.font=6)
-ggsave(file.path(results_dir, paste0(prefix, "_wp_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
+if (length(wp_enrich_res_tab) > 1) {
+  p <- cnetplot(enrich_wp_readable,
+                categorySize="pvalue",
+                showCategory = 5,
+                foldChange=de_foldchanges,
+                vertex.label.font=6)
+  ggsave(file.path(results_dir, paste0(prefix, "_wp_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
+}
 
 ## Run GO enrichment analysis 
 enrich_go <- enrichGO(gene = resIHWsig_fc_entrez$ENTREZID, 
@@ -316,13 +321,14 @@ p <- dotplot(enrich_go, showCategory=50)
 ggsave(file.path(results_dir, paste0(prefix, "_go_enrich_dotplot.png")), plot = p, width = 10, height = 10)
 
 ## create a cnetplot for erichGO
-p <- cnetplot(enrich_go,
-              categorySize="pvalue",
-              showCategory = 5,
-              foldChange=de_foldchanges,
-              vertex.label.font=6)
-ggsave(file.path(results_dir, paste0(prefix, "_go_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
-
+if (length(go_enrich_res_tab) > 1) {
+  p <- cnetplot(enrich_go,
+                categorySize="pvalue",
+                showCategory = 5,
+               foldChange=de_foldchanges,
+               vertex.label.font=6)
+  ggsave(file.path(results_dir, paste0(prefix, "_go_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
+}
 
 ########### PCA plot
 vsd <- vst(dds, blind=FALSE)
