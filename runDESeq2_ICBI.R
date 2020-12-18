@@ -241,7 +241,7 @@ kegg_enrich_res_tab = enrich_kegg_readable@result %>% as_tibble()
 write_tsv(kegg_enrich_res_tab, file.path(results_dir, paste0(prefix, "_kegg_ernich.tsv")))
 
 ## create a dotplot for enrichKEGG
-p <- dotplot(enrich_keagg, showCategory=50)
+p <- dotplot(enrich_kegg, showCategory=50)
 ggsave(file.path(results_dir, paste0(prefix, "_kegg_enrich_dotplot.png")), plot = p, width = 10, height = 10)
 
 ## create a cnetplot for erichKEGG
