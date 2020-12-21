@@ -5,7 +5,7 @@ image: continuumio/miniconda3:latest
 # procps-ng is required for nextflow to generate process statistics.
 before_script:
   - conda env update --file env.yml
-  - source activate geley-rbp
+  - source activate deseq2icbi
 
 # Execute some commands (e.g. `pytest` to execute python unit-tests,
 # or run a nextflow pipeline)
