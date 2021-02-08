@@ -47,7 +47,25 @@ As second input file you need the sample table in csv format. See "sampleTableN.
 | KO | 3 | | ko3_1.fq.gz | ko3_2.fq.gz | forward |
 
 
-### Note:
-You need to run the **dev version** of the nf-core rnaseq pipeline. Was tested with Gregor Sturms fork (**grst/rnaseq -r e4e55f5**)
+## Note:
+You need to run the 3.x version of the RNA-seq pipeline. The current release of
+3.0 contains a bug, so use the dev version currently! 
+
+## Methods summary
+
+E-mail template to send out to "clients". Make sure to double check 
+and maybe update version numbers. 
+
+```
+ * We processed raw FASTQ fils using the nf-core RNA-seq pipeline [doi:10.5281/zenodo.1400710, doi:10.1038/s41587-020-0439-x] version 3.1. 
+ * In brief, FASTQ files were trimmed using trimgalore v0.6.6 and reads were aligned to the GRCh38 reference
+   genome with GENCODE v33 annotations using STAR v2.7.6a [doi:10.1093/bioinformatics/bts635]. 
+   Gene expression was quantified using Salmon v1.4.0 [doi:10.1038/nmeth.4197]
+   using the aligned BAM files as input. 
+ * We performed differential gene expression analysis with DESeq2 v1.30.0 [doi: 10.1186/s13059-014-0550-8].
+   False-discovery-rates were calculated using IHW v1.18.0 [doi:10.1038/nmeth.3885]. 
+   We performed gene ontology (GO)-term enrichment analysis using the topGO package v2.42.0.
+   Volcano plots were visualized using the EnhancedVolcano package v1.8.0. 
+```
 
 
