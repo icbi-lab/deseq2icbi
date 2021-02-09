@@ -133,8 +133,10 @@ if(is.null(sample_col)) {
 }
 
 # distinct is required when the nf-core/rnaseq feature of mergings samples from the same lane is used.
+# replicate col is not needed here as that's already included in sample_col, unless sample_col
+# is set manually, in which case we don't want replicate_col anyway.
 sampleAnno = sampleAnno %>%
-  select(!!cond_col, !!sample_col, !!replicate_col, !!paired_grp) %>%
+  select(!!cond_col, !!sample_col, !!paired_grp) %>%
   distinct()
 
 count_mat <- read_tsv(readCountFile) %>%
