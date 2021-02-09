@@ -69,3 +69,21 @@ and maybe update version numbers.
 ```
 
 
+## Output description
+
+### Differential gene expression
+ 
+ * `IHWallGenes`: Fold change and pvalues for all genes
+ * `IHWsigFCgenes`: All differentially expressed genes that meet a fold change of 2 and a FDR of 0.1
+ * `IHWsigGenes`: All differentially expressed genes that meet a FDR of 0.1. 
+ * `PCA`: Principal component analysis plot. Ideally samples cluster by condition. 
+ * `biotype_counts`: Lists which type of genomic features are most differentially expressed. Usually, we expect most of them being protein coding. 
+ * `detectedGenesNormalizedCounts`: The gene expression matrix normalized by library size. Genes that are not expressed with at least 10 reads in any condition are filtered out. 
+ * `detectedGenesRawCounts`: The raw gene expression matrix. Genes that are not expressed with at least 10 reads in any condition are filtered out. 
+ * `go_enrich`: Plots and table with Gene-ontology enrichment results (using the clusterProfiler method). 
+ * `kegg_enrich`: Plots and table with KEGG pathway enrichment results (using the clusterProfiler method). 
+ * `reactome_enrich`: Plots and table with Reactome pathway enrichment results (using the clusterProfiler method). 
+ * `topGO`: tables with GO-term enrichment analysis by GO category (using the topGO method)
+ * `volcano`: Volcano plot of log-fold change against unadjusted pvalues. 
+ * `volcano_padj`: Volcano plot of log-fold change against FDRs. 
+ * `wp`: Table with WikiPathway enrichment results (using the clusterProfiler method). 
