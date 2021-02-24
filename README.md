@@ -47,7 +47,43 @@ As second input file you need the sample table in csv format. See "sampleTableN.
 | KO | 3 | | ko3_1.fq.gz | ko3_2.fq.gz | forward |
 
 
-### Note:
-You need to run the **dev version** of the nf-core rnaseq pipeline. Was tested with Gregor Sturms fork (**grst/rnaseq -r e4e55f5**)
+## Note:
+You need to run the 3.x version of the RNA-seq pipeline. The current release of
+3.0 contains a bug, so use the dev version currently! 
+
+## Methods summary
+
+E-mail template to send out to "clients". Make sure to double check 
+and maybe update version numbers. 
+
+```
+ * We processed raw FASTQ fils using the nf-core RNA-seq pipeline [doi:10.5281/zenodo.1400710, doi:10.1038/s41587-020-0439-x] version 3.1. 
+ * In brief, FASTQ files were trimmed using trimgalore v0.6.6 and reads were aligned to the GRCh38 reference
+   genome with GENCODE v33 annotations using STAR v2.7.6a [doi:10.1093/bioinformatics/bts635]. 
+   Gene expression was quantified using Salmon v1.4.0 [doi:10.1038/nmeth.4197]
+   using the aligned BAM files as input. 
+ * We performed differential gene expression analysis with DESeq2 v1.30.0 [doi: 10.1186/s13059-014-0550-8].
+   False-discovery-rates were calculated using IHW v1.18.0 [doi:10.1038/nmeth.3885]. 
+   We performed gene ontology (GO)-term enrichment analysis using the topGO package v2.42.0.
+   Volcano plots were visualized using the EnhancedVolcano package v1.8.0. 
+```
 
 
+## Output description
+
+### Differential gene expression
+ 
+ * `IHWallGenes`: Fold change and pvalues for all genes
+ * `IHWsigFCgenes`: All differentially expressed genes that meet a fold change of 2 and a FDR of 0.1
+ * `IHWsigGenes`: All differentially expressed genes that meet a FDR of 0.1. 
+ * `PCA`: Principal component analysis plot. Ideally samples cluster by condition. 
+ * `biotype_counts`: Lists which type of genomic features are most differentially expressed. Usually, we expect most of them being protein coding. 
+ * `detectedGenesNormalizedCounts`: The gene expression matrix normalized by library size. Genes that are not expressed with at least 10 reads in any condition are filtered out. 
+ * `detectedGenesRawCounts`: The raw gene expression matrix. Genes that are not expressed with at least 10 reads in any condition are filtered out. 
+ * `go_enrich`: Plots and table with Gene-ontology enrichment results (using the clusterProfiler method). 
+ * `kegg_enrich`: Plots and table with KEGG pathway enrichment results (using the clusterProfiler method). 
+ * `reactome_enrich`: Plots and table with Reactome pathway enrichment results (using the clusterProfiler method). 
+ * `topGO`: tables with GO-term enrichment analysis by GO category (using the topGO method)
+ * `volcano`: Volcano plot of log-fold change against unadjusted pvalues. 
+ * `volcano_padj`: Volcano plot of log-fold change against FDRs. 
+ * `wp`: Table with WikiPathway enrichment results (using the clusterProfiler method). 

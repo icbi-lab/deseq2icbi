@@ -2,8 +2,8 @@
 'runDESeq2_ICBI.R
 
 Usage:
-  runDESeq2_ICBI_p.R <sample_sheet> <count_table> --result_dir=<res_dir> --c1=<c1> --c2=<c2> [options]
-  runDESeq2_ICBI_p.R --help
+  runDESeq2_ICBI.R <sample_sheet> <count_table> --result_dir=<res_dir> --c1=<c1> --c2=<c2> [options]
+  runDESeq2_ICBI.R --help
 
 Arguments:
   <sample_sheet>                CSV file with the sample annotations.
@@ -58,7 +58,7 @@ conflict_prefer("paste", "base")
 conflict_prefer("rename", "dplyr")
 remove_ensg_version = function(x) gsub("\\.[0-9]*$", "", x)
 
-#### Set some parameters here
+#### Get parameters from docopt
 
 # Input and output
 sampleAnnotationCSV <- arguments$sample_sheet
@@ -68,13 +68,7 @@ paired_grp <- arguments$paired_grp
 
 # prefix and plot title
 prefix <- arguments$prefix
-if (is.null(prefix)) {
-  prefix = paste0(arguments$c1, "_", arguments$c2)
-}
-plotTitle <- arguments$plot_title
-if (is.null(plotTitle)) {
-  plotTitle = paste0(arguments$c1, " vs. ", arguments$c2)
-}
+plot_title <- arguments$plot_title
 
 # Sample information and contrasts
 cond_col = arguments$condition_col
@@ -99,7 +93,30 @@ gtf_file = arguments$gtf_file
 # replicate_col = "replicate"
 # gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
 
-############### Start processing
+# sampleAnnotationCSV = "../../../tables/rnaseq_samplesheet.csv"
+# readCountFile = "/data/projects/2021/VSOPMonocytesBerlin/10_rnaseq_pipeline/star_salmon/salmon.merged.gene_counts.tsv"
+# results_dir = "/home/sturm/Downloads/tmp_out"
+# paired_grp = "donor"
+# prefix = NULL
+# plot_title = NULL
+# cond_col = "group"
+# replicate_col = "replicate"
+# sample_col = NULL
+# contrast = c("group", "VSOP", "Control")
+# fdr_cutoff = 0.1
+# fc_cutoff = 1
+# gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
+
+############### Sanitize parameters and read input data
+if (is.null(plot_title)) {
+  plot_title = paste0(contrast[[2]], " vs. ", contrast[[3]])
+}
+
+if (is.null(prefix)) {
+  prefix = paste0(contrast[[2]], "_", contrast[[3]])
+}
+
+
 if(is.null(paired_grp)) {
   design_formula <- as.formula(paste0("~", cond_col))
 } else {
@@ -107,7 +124,7 @@ if(is.null(paired_grp)) {
 }
 
 sampleAnno <- read_csv(sampleAnnotationCSV) %>%
-  filter(get(cond_col) == arguments$c1 | get(cond_col) == arguments$c2)
+  filter(get(cond_col) %in% contrast[2:3])
 
 # Add sample col based on condition and replicate if sample col is not explicitly specified
 if(is.null(sample_col)) {
@@ -115,17 +132,27 @@ if(is.null(sample_col)) {
   sampleAnno = sampleAnno %>% mutate(sample=paste0(sampleAnno[[cond_col]], "_R", sampleAnno[[replicate_col]]))
 }
 
-count_mat <- read_tsv(readCountFile) %>%
-  mutate(Geneid= remove_ensg_version(Geneid))
+# distinct is required when the nf-core/rnaseq feature of mergings samples from the same lane is used.
+# replicate col is not needed here as that's already included in sample_col, unless sample_col
+# is set manually, in which case we don't want replicate_col anyway.
+sampleAnno = sampleAnno %>%
+  select(!!cond_col, !!sample_col, !!paired_grp) %>%
+  distinct()
 
-ensg_to_genesymbol = count_mat %>% select(Geneid, gene_name)
-ensg_to_desc = AnnotationDbi::select(org.Hs.eg.db, count_mat$Geneid %>% unique(), keytype = "ENSEMBL", columns = c("GENENAME")) %>%
+count_mat <- read_tsv(readCountFile) %>%
+  mutate(gene_id= remove_ensg_version(gene_id))
+
+ensg_to_genesymbol = count_mat %>% select(gene_id, gene_name)
+ensg_to_desc = AnnotationDbi::select(org.Hs.eg.db, count_mat$gene_id %>% unique(), keytype = "ENSEMBL", columns = c("GENENAME")) %>%
   distinct(across(ENSEMBL), .keep_all = TRUE)
 
 count_mat = count_mat %>%
-  select(c(Geneid, sampleAnno[[sample_col]])) %>%
-  column_to_rownames("Geneid")
+  select(c(gene_id, sampleAnno[[sample_col]])) %>%
+  column_to_rownames("gene_id") %>%
+  round() # salmon does not necessarily contain intergers
 
+
+################# Start processing
 dds <- DESeqDataSetFromMatrix(countData = count_mat,
                               colData = sampleAnno,
                               design = design_formula)
@@ -139,14 +166,14 @@ keep <- rowSums(counts(collapseReplicates(dds, dds[[cond_col]]))) >= 10
 dds <- dds[keep,]
 
 # save filtered count file
-write_tsv(counts(dds) %>% as_tibble(rownames = "Geneid"), file.path(results_dir, paste0(prefix, "_detectedGenesRawCounts_min_10_reads_in_one_condition.tsv")))
+write_tsv(counts(dds) %>% as_tibble(rownames = "gene_id"), file.path(results_dir, paste0(prefix, "_detectedGenesRawCounts_min_10_reads_in_one_condition.tsv")))
 
 # save normalized filtered count file
 dds <- estimateSizeFactors(dds)
-write_tsv(counts(dds, normalized=TRUE) %>% as_tibble(rownames = "Geneid"), file.path(results_dir, paste0(prefix, "_detectedGenesNormalizedCounts_min_10_reads_in_one_condition.tsv")))
+write_tsv(counts(dds, normalized=TRUE) %>% as_tibble(rownames = "gene_id"), file.path(results_dir, paste0(prefix, "_detectedGenesNormalizedCounts_min_10_reads_in_one_condition.tsv")))
 
 # Set the reference to the contrast level 2 (baseline) given by the --c2 option
-dds[[cond_col]] = relevel( dds[[cond_col]], arguments$c2)
+dds[[cond_col]] = relevel( dds[[cond_col]], contrast[[3]])
 
 # run DESeq
 dds <- DESeq(dds)
@@ -157,9 +184,9 @@ nc <- counts(dds, normalized=T)
 ### IHW
 # use of IHW for p value adjustment of DESeq2 results
 resIHW <- results(dds, filterFun=ihw, contrast=contrast) %>%
-  as_tibble(rownames = "Geneid") %>%
+  as_tibble(rownames = "gene_id") %>%
   left_join(ensg_to_genesymbol) %>%
-  left_join(ensg_to_desc, by = c("Geneid" = "ENSEMBL") ) %>%
+  left_join(ensg_to_desc, by = c("gene_id" = "ENSEMBL") ) %>%
   rename(genes_description = GENENAME) %>%
   arrange(pvalue)
 summary(resIHW)
@@ -184,9 +211,9 @@ if(!is.null(gtf_file)) {
     mutate(gene_id = remove_ensg_version(gene_id))
 
   count_before = nrow(resIHW)
-  resIHW = resIHW %>% left_join(select(gtf, gene_id, gene_type), by=c("Geneid"="gene_id"))
+  resIHW = resIHW %>% left_join(select(gtf, gene_id, gene_type), by=c("gene_id"="gene_id"))
   stopifnot("Number of genes should be the same after adding biotypes"= count_before == nrow(resIHW))
-  resIHWsig = resIHWsig %>% left_join(select(gtf, gene_id, gene_type), by=c("Geneid"="gene_id"))
+  resIHWsig = resIHWsig %>% left_join(select(gtf, gene_id, gene_type), by=c("gene_id"="gene_id"))
 
   biotype_counts = resIHWsig %>% group_by(gene_type) %>% count()
 
@@ -208,7 +235,7 @@ lapply(names(de_res_list), function(res) {
 })
 
 ###### Run TOPGO analysis
-de_symbols <- resIHWsig_fc$Geneid
+de_symbols <- resIHWsig_fc$gene_id
 bg_symbols <- rownames(dds)[rowSums(counts(dds)) > 0]
 
 lapply(c("BP", "MF"), function(ontology) {
@@ -230,7 +257,7 @@ resIHWsig_fc_entrez <- resIHWsig_fc %>%  inner_join(hgnc_to_entrez, by=c("gene_n
 de_foldchanges <- resIHWsig_fc_entrez$log2FoldChange
 names(de_foldchanges) <- resIHWsig_fc_entrez$ENTREZID
 
-## Run kegg pathways enrichment analysis 
+## Run kegg pathways enrichment analysis
 enrich_kegg <- enrichKEGG(gene         = resIHWsig_fc_entrez$ENTREZID,
                           universe     = universe,
                           organism     = 'hsa',
@@ -256,11 +283,11 @@ if (min(kegg_enrich_res_tab$p.adjust) < 0.05) {
   print("Warning: No significant enrichment in kegg pathways")
 }
 
-## Run reactome pathways enrichment analysis 
+## Run reactome pathways enrichment analysis
 enrich_reactome <- enrichPathway(gene = resIHWsig_fc_entrez$ENTREZID,
                                  organism = "human",
                                  universe = universe,
-                                 pvalueCutoff = 0.05, 
+                                 pvalueCutoff = 0.05,
                                  readable=TRUE)
 reactome_enrich_res_tab = enrich_reactome@result %>% as_tibble()
 write_tsv(reactome_enrich_res_tab, file.path(results_dir, paste0(prefix, "_reactome_ernich.tsv")))
@@ -281,14 +308,14 @@ if (min(reactome_enrich_res_tab$p.adjust) < 0.05) {
   print("Warning: No significant enrichment in reactome pathways")
 }
 
-## Run wiki pathways enrichment analysis 
+## Run wiki pathways enrichment analysis
 enrich_wp <- enrichWP(gene = resIHWsig_fc_entrez$ENTREZID,
                       universe     = universe,
                       organism     = 'Homo sapiens',
                       pvalueCutoff = 0.05)
 
 enrich_wp_readable <- setReadable(enrich_wp, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
-wp_enrich_res_tab = enrich_wp_readable@result %>% as_tibble() 
+wp_enrich_res_tab = enrich_wp_readable@result %>% as_tibble()
 write_tsv(wp_enrich_res_tab, file.path(results_dir, paste0(prefix, "_wp_ernich.tsv")))
 
 if (min(wp_enrich_res_tab$p.adjust) < 0.05) {
@@ -307,13 +334,13 @@ if (min(wp_enrich_res_tab$p.adjust) < 0.05) {
   print("Warning: No significant enrichment in wiki pathways")
 }
 
-## Run GO enrichment analysis 
-enrich_go <- enrichGO(gene = resIHWsig_fc_entrez$ENTREZID, 
+## Run GO enrichment analysis
+enrich_go <- enrichGO(gene = resIHWsig_fc_entrez$ENTREZID,
                 universe = universe,
                 keyType = "ENTREZID",
-                OrgDb = org.Hs.eg.db, 
-                ont = "BP", 
-                pAdjustMethod = "BH", 
+                OrgDb = org.Hs.eg.db,
+                ont = "BP",
+                pAdjustMethod = "BH",
                 qvalueCutoff = 0.05,
                 minGSSize = 10,
                 readable = TRUE)
@@ -345,7 +372,7 @@ vsd <- vst(dds, blind=FALSE)
 p <- plotPCA(vsd, intgroup=c(cond_col)) +
   geom_point() +
   geom_text(vjust = 0,hjust = 0.2, nudge_x = -1, nudge_y = 0.5, aes(label = name)) +
-  ggtitle(paste0("PCA: ", plotTitle)) +
+  ggtitle(paste0("PCA: ", plot_title)) +
   scale_color_brewer(type="qual", palette="Set1") +
   theme_bw()
 ggsave(file.path(results_dir, paste0(prefix, "_PCA.png")), plot = p)
@@ -361,7 +388,7 @@ EnhancedVolcano(resIHW,
                 FCcutoff = fc_cutoff,
                 subtitle = "",
                 legendPosition = "right",
-                title = plotTitle)
+                title = plot_title)
 dev.off()
 
 png(filename =  file.path(results_dir, paste0(prefix, "_volcano_padj.png")), width = 650, height = 650, units = "px")
@@ -373,5 +400,5 @@ EnhancedVolcano(resIHW,
                 FCcutoff = fc_cutoff,
                 subtitle = "",
                 legendPosition = "right",
-                title = plotTitle)
+                title = plot_title)
 dev.off()
