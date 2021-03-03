@@ -29,6 +29,7 @@ Optional options:
   --fc_cutoff=<log2 fc cutoff>  Fold change (log2) cutoff for volcano plots [default: 1]
   --gtf_file=<gtf>              Path to the GTF file used for featurecounts. If specified, a Biotype QC
                                 will be performed.
+  --gene_id_type=<id_type>      Type of the identifier in the `gene_id` column compatible with AnnotationDbi [default: ENSEMBL]
 ' -> doc
 
 library("conflicted")
@@ -60,6 +61,7 @@ remove_ensg_version = function(x) gsub("\\.[0-9]*$", "", x)
 
 #### Get parameters from docopt
 
+
 # Input and output
 sampleAnnotationCSV <- arguments$sample_sheet
 readCountFile <- arguments$count_table
@@ -75,6 +77,7 @@ cond_col = arguments$condition_col
 replicate_col = arguments$replicate_col
 sample_col = arguments$sample_col
 contrast = c(cond_col, arguments$c1, arguments$c2)
+gene_id_type = arguments$gene_id_type
 
 # Cutoff
 fdr_cutoff = as.numeric(arguments$fdr_cutoff)
@@ -126,6 +129,7 @@ if(is.null(paired_grp)) {
 sampleAnno <- read_csv(sampleAnnotationCSV) %>%
   filter(get(cond_col) %in% contrast[2:3])
 
+
 # Add sample col based on condition and replicate if sample col is not explicitly specified
 if(is.null(sample_col)) {
   sample_col = "sample"
@@ -139,12 +143,15 @@ sampleAnno = sampleAnno %>%
   select(!!cond_col, !!sample_col, !!paired_grp) %>%
   distinct()
 
-count_mat <- read_tsv(readCountFile) %>%
-  mutate(gene_id= remove_ensg_version(gene_id))
+count_mat <- read_tsv(readCountFile)
+if (gene_id_type == "ENSEMBL") {
+  count_mat = count_mat %>% mutate(gene_id= remove_ensg_version(gene_id))
+}
+
 
 ensg_to_genesymbol = count_mat %>% select(gene_id, gene_name)
-ensg_to_desc = AnnotationDbi::select(org.Hs.eg.db, count_mat$gene_id %>% unique(), keytype = "ENSEMBL", columns = c("GENENAME")) %>%
-  distinct(across(ENSEMBL), .keep_all = TRUE)
+ensg_to_desc = AnnotationDbi::select(org.Hs.eg.db, count_mat$gene_id %>% unique(), keytype = gene_id_type, columns = c("GENENAME")) %>%
+  distinct(across(!!gene_id_type), .keep_all = TRUE)
 
 count_mat = count_mat %>%
   select(c(gene_id, sampleAnno[[sample_col]])) %>%
@@ -186,7 +193,7 @@ nc <- counts(dds, normalized=T)
 resIHW <- results(dds, filterFun=ihw, contrast=contrast) %>%
   as_tibble(rownames = "gene_id") %>%
   left_join(ensg_to_genesymbol) %>%
-  left_join(ensg_to_desc, by = c("gene_id" = "ENSEMBL") ) %>%
+  left_join(ensg_to_desc, by = c("gene_id" = gene_id_type) ) %>%
   rename(genes_description = GENENAME) %>%
   arrange(pvalue)
 summary(resIHW)
@@ -242,7 +249,7 @@ lapply(c("BP", "MF"), function(ontology) {
   topgoDE <- topGOtable(de_symbols, bg_symbols,
                         ontology = ontology,
                         mapping = "org.Hs.eg.db",
-                        geneID = "ENSEMBL")
+                        geneID = gene_id_type)
   write_tsv(topgoDE, file.path(results_dir, paste0(prefix, "_topGO_IHWsig_", ontology, ".tsv")))
   write_xlsx(topgoDE %>% select(-genes), file.path(results_dir, paste0(prefix, "_topGO_IHWsig_", ontology, ".xlsx")))
 })
