@@ -3,9 +3,11 @@
 
 ## Usage
 ```
+runDESeq2_ICBI.R
+
 Usage:
-  runDESeq2_ICBI_p.R <sample_sheet> <count_table> --result_dir=<res_dir> --c1=<c1> --c2=<c2> [options]
-  runDESeq2_ICBI_p.R --help
+  runDESeq2_ICBI.R <sample_sheet> <count_table> --result_dir=<res_dir> --c1=<c1> --c2=<c2> [options]
+  runDESeq2_ICBI.R --help
 
 Arguments:
   <sample_sheet>                CSV file with the sample annotations.
@@ -31,6 +33,7 @@ Optional options:
   --fc_cutoff=<log2 fc cutoff>  Fold change (log2) cutoff for volcano plots [default: 1]
   --gtf_file=<gtf>              Path to the GTF file used for featurecounts. If specified, a Biotype QC
                                 will be performed.
+  --gene_id_type=<id_type>      Type of the identifier in the `gene_id` column compatible with AnnotationDbi [default: ENSEMBL] 
 ```
 
 The R script takes the merged count table from the nf-core rnaseq pipeline as input (featurecounts.merged.counts.tsv, see example).
