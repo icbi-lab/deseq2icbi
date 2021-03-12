@@ -159,7 +159,7 @@ if(nfcore) {
   sample_col = "sample"
   sampleAnno = sampleAnno %>%
     select(-fastq_1, -fastq_2) %>%
-    mutate(sample=paste0(sampleAnno[[cond_col]], "_R", sampleAnno[[replicate_col]])) %>%
+    mutate(sample=paste0(sampleAnno[[cond_col]], "_R", sampleAnno[["replicate"]])) %>%
     distinct()
 }
 
@@ -339,8 +339,11 @@ ora_tests = list(
   }
 )
 
-lapply(names(ora_tests), function(ora_name) {
-  message(paste0("Performing ", ora_name, "ORA-test..."))
+# Warmup GO database - work around https://github.com/YuLab-SMU/clusterProfiler/issues/207
+._ = enrichGO(universe[1], OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", universe = universe)
+
+bplapply(names(ora_tests), function(ora_name) {
+  message(paste0("Performing ", ora_name, " ORA-test..."))
   test_fun = ora_tests[[ora_name]]
   ora_res = test_fun(resIHWsig_fc_entrez$ENTREZID, universe)
   ora_res = setReadable(ora_res, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
@@ -402,7 +405,7 @@ if(!skip_gsea) {
     }
   )
 
-  lapply(names(gsea_tests), function(gsea_name) {
+  bplapply(names(gsea_tests), function(gsea_name) {
     message(paste0("Performing ", gsea_name, " GSEA-test..."))
     test_fun = gsea_tests[[gsea_name]]
     gsea_res = test_fun(ranked_gene_list)
