@@ -34,6 +34,7 @@ Optional options:
                                 will be performed.
   --gene_id_type=<id_type>      Type of the identifier in the `gene_id` column compatible with AnnotationDbi [default: ENSEMBL]
   --n_cpus=<n_cpus>             Number of cores to use for DESeq2 [default: 1]
+  --skip_gsea                   Skip Gene-Set-Enrichment-Analysis step
 ' -> doc
 
 library("conflicted")
@@ -93,25 +94,27 @@ gtf_file = arguments$gtf_file
 
 # Other
 n_cpus = as.numeric(arguments$n_cpus)
+skip_gsea = arguments$skip_gsea
 
 # # Testdata
 # ## Example1
-sampleAnnotationCSV = "testdata/example1/sampleTableN.csv"
-readCountFile = "testdata/example1/merged_gene_counts.txt"
-results_dir = "out"
-paired_grp = NULL
-prefix = "example1"
-plot_title = NULL
-nfcore=FALSE
-cond_col = "treatment"
-sample_col = "sample"
-contrast = c("treatment", "PFK158", "DMSO")
-gene_id_type = "ENSEMBL"
-covariate_formula = ""
-fdr_cutoff = 0.1
-fc_cutoff = 1
-gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
-n_cpus = 1
+# sampleAnnotationCSV = "testdata/example1/sampleTableN.csv"
+# readCountFile = "testdata/example1/merged_gene_counts.txt"
+# results_dir = "out"
+# paired_grp = NULL
+# prefix = "example1"
+# plot_title = NULL
+# nfcore=FALSE
+# cond_col = "treatment"
+# sample_col = "sample"
+# contrast = c("treatment", "PFK158", "DMSO")
+# gene_id_type = "ENSEMBL"
+# covariate_formula = ""
+# fdr_cutoff = 0.1
+# fc_cutoff = 1
+# gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
+# n_cpus = 1
+# skip_gsea = FALSE
 
 # ## example_nfcore
 # sampleAnnotationCSV = "testdata/example_nfcore/rnaseq_samplesheet.csv"
@@ -273,66 +276,74 @@ lapply(c("BP", "MF"), function(ontology) {
 
 ##### Pathway enrichment analysis
 hgnc_to_entrez = AnnotationDbi::select(org.Hs.eg.db, resIHW %>% pull("gene_name") %>% unique(), keytype="SYMBOL", columns=c("ENTREZID"))
+
+# full list with ENTREZIDs added
 resIHW_entrez = resIHW %>%  inner_join(hgnc_to_entrez, by=c("gene_name"="SYMBOL"))
 universe = resIHW_entrez %>% pull("ENTREZID") %>% unique()
+
+# list of significant genes with ENTREZIDs added
 resIHWsig_fc_entrez <- resIHWsig_fc %>%  inner_join(hgnc_to_entrez, by=c("gene_name"="SYMBOL"))
 de_foldchanges <- resIHWsig_fc_entrez$log2FoldChange
 names(de_foldchanges) <- resIHWsig_fc_entrez$ENTREZID
 
+## ORA
 ora_tests = list(
-  "KEGG"=function(genes, universe) {
-    enrich_kegg <- enrichKEGG(gene         = genes,
-                              universe     = universe,
-                              organism     = 'hsa',
-                              pvalueCutoff = 0.05)
-
-    setReadable(enrich_kegg, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+  "KEGG" = function(genes, universe) {
+    enrichKEGG(
+      gene         = genes,
+      universe     = universe,
+      organism     = 'hsa',
+      pvalueCutoff = 0.05
+    )
   },
-  "Reactome"=function(genes, universe) {
-    enrichPathway(gene = genes,
-                  organism = "human",
-                  universe = universe,
-                  pvalueCutoff = 0.05,
-                  readable=TRUE)
+  "Reactome" = function(genes, universe) {
+    enrichPathway(
+      gene = genes,
+      organism = "human",
+      universe = universe,
+      pvalueCutoff = 0.05,
+      readable = TRUE
+    )
   },
-  "WikiPathway"=function(genes, universe) {
-    enrich_wp = enrichWP(gene = genes,
-             universe     = universe,
-             organism     = 'Homo sapiens',
-             pvalueCutoff = 0.05)
-
-    setReadable(enrich_wp, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+  "WikiPathway" = function(genes, universe) {
+    enrichWP(
+      gene = genes,
+      universe     = universe,
+      organism     = 'Homo sapiens',
+      pvalueCutoff = 0.05
+    )
   },
-  "GO_BP"=function(genes, universe) {
-    enrichGO(gene = genes,
-             universe = universe,
-             keyType = "ENTREZID",
-             OrgDb = org.Hs.eg.db,
-             ont = "BP",
-             pAdjustMethod = "BH",
-             qvalueCutoff = 0.05,
-             minGSSize = 10,
-             readable = TRUE)
+  "GO_BP" = function(genes, universe) {
+    enrichGO(
+      gene = genes,
+      universe = universe,
+      keyType = "ENTREZID",
+      OrgDb = org.Hs.eg.db,
+      ont = "BP",
+      pAdjustMethod = "BH",
+      qvalueCutoff = 0.05,
+      minGSSize = 10
+    )
   },
-  "GO_MF"=function(genes, universe) {
-    enrichGO(gene = genes,
-             universe = universe,
-             keyType = "ENTREZID",
-             OrgDb = org.Hs.eg.db,
-             ont = "MF",
-             pAdjustMethod = "BH",
-             qvalueCutoff = 0.05,
-             minGSSize = 10,
-             readable = TRUE)
+  "GO_MF" = function(genes, universe) {
+    enrichGO(
+      gene = genes,
+      universe = universe,
+      keyType = "ENTREZID",
+      OrgDb = org.Hs.eg.db,
+      ont = "MF",
+      pAdjustMethod = "BH",
+      qvalueCutoff = 0.05,
+      minGSSize = 10
+    )
   }
 )
 
-
-## KEGG pathways enrichment analysis
 lapply(names(ora_tests), function(ora_name) {
   message(paste0("Performing ", ora_name, "ORA-test..."))
   test_fun = ora_tests[[ora_name]]
   ora_res = test_fun(resIHWsig_fc_entrez$ENTREZID, universe)
+  ora_res = setReadable(ora_res, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
   res_tab = as_tibble(ora_res@result)
   write_tsv(res_tab, file.path(results_dir, paste0(prefix, "_ORA_", ora_name, ".tsv")))
   if (min(res_tab$p.adjust) < 0.05) {
@@ -349,6 +360,71 @@ lapply(names(ora_tests), function(ora_name) {
     message(paste0("Warning: No significant enrichment in ", ora_name, " ORA analysis. "))
   }
 })
+
+## GSEA
+if(!skip_gsea) {
+  # for GSEA use genes ranked by test statistic
+  res_ihw_ranked = resIHW_entrez %>%
+    arrange(-stat) %>%
+    select(ENTREZID, stat) %>%
+    na.omit() %>%
+    distinct(ENTREZID, .keep_all=TRUE)
+  ranked_gene_list = res_ihw_ranked$stat
+  names(ranked_gene_list) = res_ihw_ranked$ENTREZID
+
+  gsea_tests = list(
+    "KEGG"=function(ranked_gene_list) {
+      gseKEGG(geneList = ranked_gene_list, organism = "hsa", pvalueCutoff = 1)
+    },
+    "Reactome"=function(ranked_gene_list) {
+      gsePathway(geneList = ranked_gene_list, organism = "human", pvalueCutoff = 1)
+    },
+    "WikiPathway"=function(ranked_gene_list) {
+      gseWP(geneList = ranked_gene_list, organism = "Homo sapiens", pvalueCutoff = 1)
+    },
+    "GO_BP"=function(ranked_gene_list) {
+      gseGO(geneList=ranked_gene_list,
+               keyType = "ENTREZID",
+               OrgDb = org.Hs.eg.db,
+               ont = "BP",
+               pAdjustMethod = "BH",
+               pvalueCutoff = 1,
+               minGSSize = 10)
+    },
+    "GO_MF"=function(ranked_gene_list) {
+      gseGO(geneList=ranked_gene_list,
+               keyType = "ENTREZID",
+               OrgDb = org.Hs.eg.db,
+               ont = "MF",
+               pAdjustMethod = "BH",
+               pvalueCutoff = 1,
+               minGSSize = 10)
+    }
+  )
+
+  lapply(names(gsea_tests), function(gsea_name) {
+    message(paste0("Performing ", gsea_name, " GSEA-test..."))
+    test_fun = gsea_tests[[gsea_name]]
+    gsea_res = test_fun(ranked_gene_list)
+    gsea_res = setReadable(gsea_res, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+    res_tab = gsea_res@result %>% as_tibble()
+
+    write_tsv(res_tab, file.path(results_dir, paste0(prefix, "_GSEA_", gsea_name, ".tsv")))
+    if (min(res_tab$p.adjust) < 0.05) {
+      p = dotplot(gsea_res, showCategory=40)
+      ggsave(file.path(results_dir, paste0(prefix, "_GSEA_", gsea_name, "_dotplot.png")), plot = p, width = 15, height = 10)
+
+      p <- cnetplot(gsea_res,
+                    categorySize="pvalue",
+                    showCategory = 5,
+                    foldChange=de_foldchanges,
+                    vertex.label.font=6)
+      ggsave(file.path(results_dir, paste0(prefix, "_GSEA_", gsea_name, "_cnetplot.png")), plot = p, width = 15, height = 12)
+    } else {
+      message(paste0("Warning: No significant enrichment in ", gsea_name, " GSEA analysis. "))
+    }
+  })
+}
 
 
 ########### PCA plot

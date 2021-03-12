@@ -74,6 +74,19 @@ and maybe update version numbers.
 
 ## Output description
 
+### Over-representation test vs Gene-Set-Enrichment Analysis
+The over-representation test (ORA) takes the list of differentially expressed genes (as defined by the FDR and fold-change cutoff)
+and checks if it contains more genes from a certain gene-set (e.g. GO-term, KEGG pathway) than would be expected
+by random chance. 
+
+Gene-set-enrichment-analysis (GSEA) rankes genes from most upregulated to most downregulated, and checks if genes from a certain gene-set
+tend to be more at the top, or more at the bottom of this list. 
+
+The ORA test results are straightforward to interpret and, in most cases, the preferred flavor of gene-set analysis. 
+GSEA is superior when very few genes are differentially expressed, as it also takes into account more subtle, 
+but coordinated gene expression changes that are statistically significant only when regarding the gene set as a whole, 
+but not on the level of single genes. 
+
 ### Differential gene expression
  
  * `IHWallGenes`: Fold change and pvalues for all genes
@@ -83,9 +96,10 @@ and maybe update version numbers.
  * `biotype_counts`: Lists which type of genomic features are most differentially expressed. Usually, we expect most of them being protein coding. 
  * `detectedGenesNormalizedCounts`: The gene expression matrix normalized by library size. Genes that are not expressed with at least 10 reads in any condition are filtered out. 
  * `detectedGenesRawCounts`: The raw gene expression matrix. Genes that are not expressed with at least 10 reads in any condition are filtered out. 
- * `go_enrich`: Plots and table with Gene-ontology enrichment results (using the clusterProfiler method). 
- * `kegg_enrich`: Plots and table with KEGG pathway enrichment results (using the clusterProfiler method). 
- * `reactome_enrich`: Plots and table with Reactome pathway enrichment results (using the clusterProfiler method). 
+ * `go_enrich`: Plots and table with Gene-ontology enrichment results (using ORA implemented in clusterProfiler). 
+ * `kegg_enrich`: Plots and table with KEGG pathway enrichment results (using ORA implemented in clusterProfiler). 
+ * `reactome_enrich`: Plots and table with Reactome pathway enrichment results (using ORA implemented in clusterProfiler). 
+ * `go_gsea`: Plots and table with Gene set 
  * `topGO`: tables with GO-term enrichment analysis by GO category (using the topGO method)
  * `volcano`: Volcano plot of log-fold change against unadjusted pvalues. 
  * `volcano_padj`: Volcano plot of log-fold change against FDRs. 
