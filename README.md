@@ -1,6 +1,5 @@
 # R script to run for "Bioinformatic Service Unit" projects
 
-
 ## Usage
 ```
 runDESeq2_ICBI.R
@@ -19,21 +18,26 @@ Mandatory options:
   --c2=<c2>                     Contrast level 2 (baseline). Needs to be contained in condition_col.
 
 Optional options:
-  --replicate_col=<rep_col>     Column that contains the replicate. If <sample_col> not present,
-                                assume the sample name = "{cond_col}_R{rep_col}". This corresponds to
-                                the nf-core RNA-seq sample-sheet. [default: replicate]
+  --nfcore                      Indicate that the input samplesheet is from the nf-core RNA-seq ppipeline.
+                                Will merge entries from the same sample and infer the sample_id from `group` and `replicate`.
+                                If set, this option overrides `sample_col`.
   --condition_col=<cond_col>    Column in sample annotation that contains the condition [default: group]
   --sample_col=<sample_col>     Column in sample annotation that contains the sample names
-                                (needs to match the colnames of the count table). Overrides replicate_col.
+                                (needs to match the colnames of the count table). [default: sample]
   --paired_grp=<paired_grp>     Column that conatins the name of the paired samples, when dealing with
                                 paired data.
+  --covariate_formula=<formula> Formula to model additional covariates (need to be columns in the samplesheet)
+                                that will be appended to the formula built from `condition_col`.
+                                E.g. `+ age + sex`. Per default, no covariates are modelled.
   --plot_title=<title>          Title shown above plots. Is built from contrast per default.
   --prefix=<prefix>             Results file prefix. Is built from contrasts per default.
   --fdr_cutoff=<fdr>            False discovery rate for GO analysis and volcano plots [default: 0.1]
   --fc_cutoff=<log2 fc cutoff>  Fold change (log2) cutoff for volcano plots [default: 1]
   --gtf_file=<gtf>              Path to the GTF file used for featurecounts. If specified, a Biotype QC
                                 will be performed.
-  --gene_id_type=<id_type>      Type of the identifier in the `gene_id` column compatible with AnnotationDbi [default: ENSEMBL] 
+  --gene_id_type=<id_type>      Type of the identifier in the `gene_id` column compatible with AnnotationDbi [default: ENSEMBL]
+  --n_cpus=<n_cpus>             Number of cores to use for DESeq2 [default: 1]
+  --skip_gsea                   Skip Gene-Set-Enrichment-Analysis step 
 ```
 
 The R script takes the merged count table from the nf-core rnaseq pipeline as input (featurecounts.merged.counts.tsv, see example).
@@ -71,7 +75,6 @@ and maybe update version numbers.
    Volcano plots were visualized using the EnhancedVolcano package v1.8.0. 
 ```
 
-
 ## Output description
 
 ### Differential gene expression
@@ -83,10 +86,23 @@ and maybe update version numbers.
  * `biotype_counts`: Lists which type of genomic features are most differentially expressed. Usually, we expect most of them being protein coding. 
  * `detectedGenesNormalizedCounts`: The gene expression matrix normalized by library size. Genes that are not expressed with at least 10 reads in any condition are filtered out. 
  * `detectedGenesRawCounts`: The raw gene expression matrix. Genes that are not expressed with at least 10 reads in any condition are filtered out. 
- * `go_enrich`: Plots and table with Gene-ontology enrichment results (using the clusterProfiler method). 
- * `kegg_enrich`: Plots and table with KEGG pathway enrichment results (using the clusterProfiler method). 
- * `reactome_enrich`: Plots and table with Reactome pathway enrichment results (using the clusterProfiler method). 
+ * `ORA_`: Gene-set Analysis with over-representation test (ORA) from clusterProfiler. GO_BP = Gene ontology, biological processes, GO_MF = Gene ontology, molecular function, KEGG = Kegg pathways, Reactome = Reactome pathways
+ * `GSEA_`: Gene-set Analysis with GSEA algorithm from clusterProfiler. 
  * `topGO`: tables with GO-term enrichment analysis by GO category (using the topGO method)
  * `volcano`: Volcano plot of log-fold change against unadjusted pvalues. 
  * `volcano_padj`: Volcano plot of log-fold change against FDRs. 
  * `wp`: Table with WikiPathway enrichment results (using the clusterProfiler method). 
+ 
+### Over-representation test vs Gene-Set-Enrichment Analysis
+The over-representation test (ORA) takes the list of deferentially expressed genes (as defined by the FDR- and fold-change cutoff)
+and checks if it contains more genes from a certain gene-set (e.g. GO-term, KEGG pathway) than would be expected
+by random chance. 
+
+Gene-set-enrichment-analysis (GSEA) ranks genes from most upregulated to most downregulated, and checks if genes from a certain gene-set
+tend to be more at the top, or more at the bottom of this list. 
+
+The ORA test results are straightforward to interpret and, in most cases, the preferred flavor of gene-set analysis. 
+GSEA is superior when very few genes are differentially expressed, as it also takes into account more subtle, 
+but coordinated gene expression changes that are statistically significant only when regarding the gene set as a whole, 
+but not on the level of single genes. 
+

@@ -15,14 +15,17 @@ Mandatory options:
   --c2=<c2>                     Contrast level 2 (baseline). Needs to be contained in condition_col.
 
 Optional options:
-  --replicate_col=<rep_col>     Column that contains the replicate. If <sample_col> not present,
-                                assume the sample name = "{cond_col}_R{rep_col}". This corresponds to
-                                the nf-core RNA-seq sample-sheet. [default: replicate]
+  --nfcore                      Indicate that the input samplesheet is from the nf-core RNA-seq ppipeline.
+                                Will merge entries from the same sample and infer the sample_id from `group` and `replicate`.
+                                If set, this option overrides `sample_col`.
   --condition_col=<cond_col>    Column in sample annotation that contains the condition [default: group]
   --sample_col=<sample_col>     Column in sample annotation that contains the sample names
-                                (needs to match the colnames of the count table). Overrides replicate_col.
+                                (needs to match the colnames of the count table). [default: sample]
   --paired_grp=<paired_grp>     Column that conatins the name of the paired samples, when dealing with
                                 paired data.
+  --covariate_formula=<formula> Formula to model additional covariates (need to be columns in the samplesheet)
+                                that will be appended to the formula built from `condition_col`.
+                                E.g. `+ age + sex`. Per default, no covariates are modelled.
   --plot_title=<title>          Title shown above plots. Is built from contrast per default.
   --prefix=<prefix>             Results file prefix. Is built from contrasts per default.
   --fdr_cutoff=<fdr>            False discovery rate for GO analysis and volcano plots [default: 0.1]
@@ -30,6 +33,8 @@ Optional options:
   --gtf_file=<gtf>              Path to the GTF file used for featurecounts. If specified, a Biotype QC
                                 will be performed.
   --gene_id_type=<id_type>      Type of the identifier in the `gene_id` column compatible with AnnotationDbi [default: ENSEMBL]
+  --n_cpus=<n_cpus>             Number of cores to use for DESeq2 [default: 1]
+  --skip_gsea                   Skip Gene-Set-Enrichment-Analysis step
 ' -> doc
 
 library("conflicted")
@@ -38,6 +43,7 @@ arguments = docopt(doc, version = "0.1")
 
 print(arguments)
 
+library("BiocParallel")
 library("DESeq2")
 library("IHW")
 library("org.Hs.eg.db")
@@ -61,7 +67,6 @@ remove_ensg_version = function(x) gsub("\\.[0-9]*$", "", x)
 
 #### Get parameters from docopt
 
-
 # Input and output
 sampleAnnotationCSV <- arguments$sample_sheet
 readCountFile <- arguments$count_table
@@ -73,11 +78,12 @@ prefix <- arguments$prefix
 plot_title <- arguments$plot_title
 
 # Sample information and contrasts
+nfcore = arguments$nfcore
 cond_col = arguments$condition_col
-replicate_col = arguments$replicate_col
 sample_col = arguments$sample_col
 contrast = c(cond_col, arguments$c1, arguments$c2)
 gene_id_type = arguments$gene_id_type
+covariate_formula = arguments$covariate_formula
 
 # Cutoff
 fdr_cutoff = as.numeric(arguments$fdr_cutoff)
@@ -86,68 +92,81 @@ fc_cutoff = as.numeric(arguments$fc_cutoff)
 # GTF for Biotype QC
 gtf_file = arguments$gtf_file
 
-# ### Testdata
-# sampleAnnotationCSV = "testdata/sampleTableN.csv"
-# readCountFile = "testdata/merged_gene_counts.txt"
+# Other
+n_cpus = as.numeric(arguments$n_cpus)
+skip_gsea = arguments$skip_gsea
+
+# # Testdata
+# ## Example1
+# sampleAnnotationCSV = "testdata/example1/sampleTableN.csv"
+# readCountFile = "testdata/example1/merged_gene_counts.txt"
 # results_dir = "out"
-# contrast = c("treatment", "PFK158", "DMSO")
+# paired_grp = NULL
+# prefix = "example1"
+# plot_title = NULL
+# nfcore=FALSE
 # cond_col = "treatment"
 # sample_col = "sample"
-# replicate_col = "replicate"
+# contrast = c("treatment", "PFK158", "DMSO")
+# gene_id_type = "ENSEMBL"
+# covariate_formula = ""
+# fdr_cutoff = 0.1
+# fc_cutoff = 1
 # gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
+# n_cpus = 1
+# skip_gsea = FALSE
 
-# sampleAnnotationCSV = "../../../tables/rnaseq_samplesheet.csv"
-# readCountFile = "/data/projects/2021/VSOPMonocytesBerlin/10_rnaseq_pipeline/star_salmon/salmon.merged.gene_counts.tsv"
+# ## example_nfcore
+# sampleAnnotationCSV = "testdata/example_nfcore/rnaseq_samplesheet.csv"
+# readCountFile = "testdata/example_nfcore/salmon.merged.gene_counts.subset.tsv"
 # results_dir = "/home/sturm/Downloads/tmp_out"
+# nfcore = TRUE
 # paired_grp = "donor"
 # prefix = NULL
 # plot_title = NULL
 # cond_col = "group"
-# replicate_col = "replicate"
 # sample_col = NULL
-# contrast = c("group", "VSOP", "Control")
+# contrast = c("group", "grpA", "grpB")
 # fdr_cutoff = 0.1
 # fc_cutoff = 1
 # gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
 
 ############### Sanitize parameters and read input data
+register(MulticoreParam(workers = n_cpus))
+
 if (is.null(plot_title)) {
   plot_title = paste0(contrast[[2]], " vs. ", contrast[[3]])
 }
-
 if (is.null(prefix)) {
   prefix = paste0(contrast[[2]], "_", contrast[[3]])
 }
-
+if (is.null(covariate_formula)) {
+  covariate_formula = ""
+}
 
 if(is.null(paired_grp)) {
-  design_formula <- as.formula(paste0("~", cond_col))
+  design_formula <- as.formula(paste0("~", cond_col, covariate_formula))
 } else {
-  design_formula <- as.formula(paste0("~", paired_grp , " + ", cond_col))
+  design_formula <- as.formula(paste0("~", paired_grp , " + ", cond_col, covariate_formula))
 }
 
 sampleAnno <- read_csv(sampleAnnotationCSV) %>%
   filter(get(cond_col) %in% contrast[2:3])
 
-
 # Add sample col based on condition and replicate if sample col is not explicitly specified
-if(is.null(sample_col)) {
+# and make samplesheet distinct (in case the 'merge replicates' functionality was used).
+if(nfcore) {
   sample_col = "sample"
-  sampleAnno = sampleAnno %>% mutate(sample=paste0(sampleAnno[[cond_col]], "_R", sampleAnno[[replicate_col]]))
+  sampleAnno = sampleAnno %>%
+    select(-fastq_1, -fastq_2) %>%
+    mutate(sample=paste0(sampleAnno[[cond_col]], "_R", sampleAnno[["replicate"]])) %>%
+    distinct()
 }
-
-# distinct is required when the nf-core/rnaseq feature of mergings samples from the same lane is used.
-# replicate col is not needed here as that's already included in sample_col, unless sample_col
-# is set manually, in which case we don't want replicate_col anyway.
-sampleAnno = sampleAnno %>%
-  select(!!cond_col, !!sample_col, !!paired_grp) %>%
-  distinct()
 
 count_mat <- read_tsv(readCountFile)
 if (gene_id_type == "ENSEMBL") {
   count_mat = count_mat %>% mutate(gene_id= remove_ensg_version(gene_id))
 }
-
 
 ensg_to_genesymbol = count_mat %>% select(gene_id, gene_name)
 ensg_to_desc = AnnotationDbi::select(org.Hs.eg.db, count_mat$gene_id %>% unique(), keytype = gene_id_type, columns = c("GENENAME")) %>%
@@ -156,7 +175,7 @@ ensg_to_desc = AnnotationDbi::select(org.Hs.eg.db, count_mat$gene_id %>% unique(
 count_mat = count_mat %>%
   select(c(gene_id, sampleAnno[[sample_col]])) %>%
   column_to_rownames("gene_id") %>%
-  round() # salmon does not necessarily contain intergers
+  round() # salmon does not necessarily contain integers
 
 
 ################# Start processing
@@ -183,7 +202,7 @@ write_tsv(counts(dds, normalized=TRUE) %>% as_tibble(rownames = "gene_id"), file
 dds[[cond_col]] = relevel( dds[[cond_col]], contrast[[3]])
 
 # run DESeq
-dds <- DESeq(dds)
+dds <- DESeq(dds, parallel = (n_cpus > 1))
 
 # get normalized counts
 nc <- counts(dds, normalized=T)
@@ -255,122 +274,161 @@ lapply(c("BP", "MF"), function(ontology) {
 })
 
 
-##### Run Pathway enrichment analysis
+##### Pathway enrichment analysis
 hgnc_to_entrez = AnnotationDbi::select(org.Hs.eg.db, resIHW %>% pull("gene_name") %>% unique(), keytype="SYMBOL", columns=c("ENTREZID"))
+
+# full list with ENTREZIDs added
 resIHW_entrez = resIHW %>%  inner_join(hgnc_to_entrez, by=c("gene_name"="SYMBOL"))
 universe = resIHW_entrez %>% pull("ENTREZID") %>% unique()
-resIHWsig_fc_entrez <- resIHWsig_fc %>%  inner_join(hgnc_to_entrez, by=c("gene_name"="SYMBOL"))
 
+# list of significant genes with ENTREZIDs added
+resIHWsig_fc_entrez <- resIHWsig_fc %>%  inner_join(hgnc_to_entrez, by=c("gene_name"="SYMBOL"))
 de_foldchanges <- resIHWsig_fc_entrez$log2FoldChange
 names(de_foldchanges) <- resIHWsig_fc_entrez$ENTREZID
 
-## Run kegg pathways enrichment analysis
-enrich_kegg <- enrichKEGG(gene         = resIHWsig_fc_entrez$ENTREZID,
-                          universe     = universe,
-                          organism     = 'hsa',
-                          pvalueCutoff = 0.05)
+## ORA
+ora_tests = list(
+  "KEGG" = function(genes, universe) {
+    enrichKEGG(
+      gene         = genes,
+      universe     = universe,
+      organism     = 'hsa',
+      pvalueCutoff = 0.05
+    )
+  },
+  "Reactome" = function(genes, universe) {
+    enrichPathway(
+      gene = genes,
+      organism = "human",
+      universe = universe,
+      pvalueCutoff = 0.05,
+      readable = TRUE
+    )
+  },
+  "WikiPathway" = function(genes, universe) {
+    enrichWP(
+      gene = genes,
+      universe     = universe,
+      organism     = 'Homo sapiens',
+      pvalueCutoff = 0.05
+    )
+  },
+  "GO_BP" = function(genes, universe) {
+    enrichGO(
+      gene = genes,
+      universe = universe,
+      keyType = "ENTREZID",
+      OrgDb = org.Hs.eg.db,
+      ont = "BP",
+      pAdjustMethod = "BH",
+      qvalueCutoff = 0.05,
+      minGSSize = 10
+    )
+  },
+  "GO_MF" = function(genes, universe) {
+    enrichGO(
+      gene = genes,
+      universe = universe,
+      keyType = "ENTREZID",
+      OrgDb = org.Hs.eg.db,
+      ont = "MF",
+      pAdjustMethod = "BH",
+      qvalueCutoff = 0.05,
+      minGSSize = 10
+    )
+  }
+)
 
-enrich_kegg_readable <- setReadable(enrich_kegg, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
-kegg_enrich_res_tab = enrich_kegg_readable@result %>% as_tibble()
-write_tsv(kegg_enrich_res_tab, file.path(results_dir, paste0(prefix, "_kegg_ernich.tsv")))
+# Warmup GO database - work around https://github.com/YuLab-SMU/clusterProfiler/issues/207
+._ = enrichGO(universe[1], OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", universe = universe)
 
-if (min(kegg_enrich_res_tab$p.adjust) < 0.05) {
-  ## create a dotplot for enrichKEGG
-  p <- dotplot(enrich_kegg, showCategory=50)
-  ggsave(file.path(results_dir, paste0(prefix, "_kegg_enrich_dotplot.png")), plot = p, width = 10, height = 10)
+bplapply(names(ora_tests), function(ora_name) {
+  message(paste0("Performing ", ora_name, " ORA-test..."))
+  test_fun = ora_tests[[ora_name]]
+  ora_res = test_fun(resIHWsig_fc_entrez$ENTREZID, universe)
+  ora_res = setReadable(ora_res, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+  res_tab = as_tibble(ora_res@result)
+  write_tsv(res_tab, file.path(results_dir, paste0(prefix, "_ORA_", ora_name, ".tsv")))
+  if (min(res_tab$p.adjust) < 0.05) {
+    p = dotplot(ora_res, showCategory=40)
+    ggsave(file.path(results_dir, paste0(prefix, "_ORA_", ora_name, "_dotplot.png")), plot = p, width = 15, height = 10)
 
-  ## create a cnetplot for erichKEGG
-  p <- cnetplot(enrich_kegg_readable,
-                categorySize="pvalue",
-                showCategory = 5,
-                foldChange=de_foldchanges,
-                vertex.label.font=6)
-  ggsave(file.path(results_dir, paste0(prefix, "_kegg_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
-} else {
-  print("Warning: No significant enrichment in kegg pathways")
+    p <- cnetplot(ora_res,
+                  categorySize="pvalue",
+                  showCategory = 5,
+                  foldChange=de_foldchanges,
+                  vertex.label.font=6)
+    ggsave(file.path(results_dir, paste0(prefix, "_ORA_", ora_name, "_cnetplot.png")), plot = p, width = 15, height = 12)
+  } else {
+    message(paste0("Warning: No significant enrichment in ", ora_name, " ORA analysis. "))
+  }
+})
+
+## GSEA
+if(!skip_gsea) {
+  # for GSEA use genes ranked by test statistic
+  res_ihw_ranked = resIHW_entrez %>%
+    arrange(-stat) %>%
+    select(ENTREZID, stat) %>%
+    na.omit() %>%
+    distinct(ENTREZID, .keep_all=TRUE)
+  ranked_gene_list = res_ihw_ranked$stat
+  names(ranked_gene_list) = res_ihw_ranked$ENTREZID
+
+  gsea_tests = list(
+    "KEGG"=function(ranked_gene_list) {
+      gseKEGG(geneList = ranked_gene_list, organism = "hsa", pvalueCutoff = 1)
+    },
+    "Reactome"=function(ranked_gene_list) {
+      gsePathway(geneList = ranked_gene_list, organism = "human", pvalueCutoff = 1)
+    },
+    "WikiPathway"=function(ranked_gene_list) {
+      gseWP(geneList = ranked_gene_list, organism = "Homo sapiens", pvalueCutoff = 1)
+    },
+    "GO_BP"=function(ranked_gene_list) {
+      gseGO(geneList=ranked_gene_list,
+               keyType = "ENTREZID",
+               OrgDb = org.Hs.eg.db,
+               ont = "BP",
+               pAdjustMethod = "BH",
+               pvalueCutoff = 1,
+               minGSSize = 10)
+    },
+    "GO_MF"=function(ranked_gene_list) {
+      gseGO(geneList=ranked_gene_list,
+               keyType = "ENTREZID",
+               OrgDb = org.Hs.eg.db,
+               ont = "MF",
+               pAdjustMethod = "BH",
+               pvalueCutoff = 1,
+               minGSSize = 10)
+    }
+  )
+
+  bplapply(names(gsea_tests), function(gsea_name) {
+    message(paste0("Performing ", gsea_name, " GSEA-test..."))
+    test_fun = gsea_tests[[gsea_name]]
+    gsea_res = test_fun(ranked_gene_list)
+    gsea_res = setReadable(gsea_res, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+    res_tab = gsea_res@result %>% as_tibble()
+
+    write_tsv(res_tab, file.path(results_dir, paste0(prefix, "_GSEA_", gsea_name, ".tsv")))
+    if (min(res_tab$p.adjust) < 0.05) {
+      p = dotplot(gsea_res, showCategory=40)
+      ggsave(file.path(results_dir, paste0(prefix, "_GSEA_", gsea_name, "_dotplot.png")), plot = p, width = 15, height = 10)
+
+      p <- cnetplot(gsea_res,
+                    categorySize="pvalue",
+                    showCategory = 5,
+                    foldChange=de_foldchanges,
+                    vertex.label.font=6)
+      ggsave(file.path(results_dir, paste0(prefix, "_GSEA_", gsea_name, "_cnetplot.png")), plot = p, width = 15, height = 12)
+    } else {
+      message(paste0("Warning: No significant enrichment in ", gsea_name, " GSEA analysis. "))
+    }
+  })
 }
 
-## Run reactome pathways enrichment analysis
-enrich_reactome <- enrichPathway(gene = resIHWsig_fc_entrez$ENTREZID,
-                                 organism = "human",
-                                 universe = universe,
-                                 pvalueCutoff = 0.05,
-                                 readable=TRUE)
-reactome_enrich_res_tab = enrich_reactome@result %>% as_tibble()
-write_tsv(reactome_enrich_res_tab, file.path(results_dir, paste0(prefix, "_reactome_ernich.tsv")))
-
-if (min(reactome_enrich_res_tab$p.adjust) < 0.05) {
-  ## create a dotplot for enrichPathway (reactome)
-  p <- dotplot(enrich_reactome, showCategory=50)
-  ggsave(file.path(results_dir, paste0(prefix, "_reactome_enrich_dotplot.png")), plot = p, width = 15, height = 10)
-
-  ## create a cnetplot for erichPathway (reactome)
-  p <- cnetplot(enrich_reactome,
-                categorySize="pvalue",
-                showCategory = 5,
-                foldChange=de_foldchanges,
-                vertex.label.font=6)
-  ggsave(file.path(results_dir, paste0(prefix, "_reactome_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
-} else {
-  print("Warning: No significant enrichment in reactome pathways")
-}
-
-## Run wiki pathways enrichment analysis
-enrich_wp <- enrichWP(gene = resIHWsig_fc_entrez$ENTREZID,
-                      universe     = universe,
-                      organism     = 'Homo sapiens',
-                      pvalueCutoff = 0.05)
-
-enrich_wp_readable <- setReadable(enrich_wp, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
-wp_enrich_res_tab = enrich_wp_readable@result %>% as_tibble()
-write_tsv(wp_enrich_res_tab, file.path(results_dir, paste0(prefix, "_wp_ernich.tsv")))
-
-if (min(wp_enrich_res_tab$p.adjust) < 0.05) {
-  ## create a dotplot for enrichWP
-  p <- dotplot(enrich_wp, showCategory=50)
-  ggsave(file.path(results_dir, paste0(prefix, "_wp_enrich_dotplot.png")), plot = p, width = 10, height = 10)
-
-  ## create a cnetplot for erichWP
-  p <- cnetplot(enrich_wp_readable,
-                categorySize="pvalue",
-                showCategory = 5,
-                foldChange=de_foldchanges,
-                vertex.label.font=6)
-  ggsave(file.path(results_dir, paste0(prefix, "_wp_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
-} else {
-  print("Warning: No significant enrichment in wiki pathways")
-}
-
-## Run GO enrichment analysis
-enrich_go <- enrichGO(gene = resIHWsig_fc_entrez$ENTREZID,
-                universe = universe,
-                keyType = "ENTREZID",
-                OrgDb = org.Hs.eg.db,
-                ont = "BP",
-                pAdjustMethod = "BH",
-                qvalueCutoff = 0.05,
-                minGSSize = 10,
-                readable = TRUE)
-
-## Output results from GO analysis to a table
-go_enrich_res_tab <- enrich_go@result %>% as_tibble()
-write_tsv(go_enrich_res_tab, file.path(results_dir, paste0(prefix, "_go_ernich.tsv")))
-
-if (min(go_enrich_res_tab$p.adjust) < 0.05) {
-  ## create a dotplot for enrichGO
-  p <- dotplot(enrich_go, showCategory=50)
-  ggsave(file.path(results_dir, paste0(prefix, "_go_enrich_dotplot.png")), plot = p, width = 10, height = 10)
-
-  ## create a cnetplot for erichGO
-  p <- cnetplot(enrich_go,
-                categorySize="pvalue",
-                showCategory = 5,
-               foldChange=de_foldchanges,
-               vertex.label.font=6)
-  ggsave(file.path(results_dir, paste0(prefix, "_go_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
-} else {
-  print("Warning: No significant enrichment in GO BP")
-}
 
 ########### PCA plot
 vsd <- vst(dds, blind=FALSE)
