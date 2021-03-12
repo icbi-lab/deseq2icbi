@@ -14,14 +14,20 @@ test:
   script:
     - mkdir out
     - |
-        ./runDESeq2_ICBI.R testdata/sampleTableN.csv testdata/merged_gene_counts.txt  --result_dir=out \
+        ./runDESeq2_ICBI.R testdata/example1/sampleTableN.csv testdata/example1/merged_gene_counts.txt  --result_dir=out \
         --sample_col=sample --condition_col=overexpression \
         --c1=PFKFB3_S461E --c2=MOCK \
-        --gtf_file=testdata/gencode_subset.gtf
+        --gtf_file=testdata/example1/gencode_subset.gtf
     - |
-        ./runDESeq2_ICBI.R testdata/sampleTableN.csv testdata/merged_gene_counts.txt  --result_dir=out \
+        ./runDESeq2_ICBI.R testdata/example1/sampleTableN.csv testdata/example1/merged_gene_counts.txt  --result_dir=out \
         --sample_col=sample --condition_col=overexpression \
         --c1=PFKFB3_S461E --c2=MOCK \
         --paired_grp=treatment \
-        --gtf_file=testdata/gencode_subset.gtf
+        --covariate_formula="+numeric_covariate" \
+        --gtf_file=testdata/example1/gencode_subset.gtf
+    - |
+        ./runDESeq2_ICBI.R testdata/example_nfcore/rnaseq_samplesheet.csv testdata/example_nfcore/salmon.merged.gene_counts.subset.tsv --result_dir=out \
+        --sample_col=sample --nfcore \
+        --c1=grpA --c2=grpB \
+        --n_cpus=2
 

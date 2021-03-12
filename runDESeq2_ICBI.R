@@ -15,14 +15,17 @@ Mandatory options:
   --c2=<c2>                     Contrast level 2 (baseline). Needs to be contained in condition_col.
 
 Optional options:
-  --replicate_col=<rep_col>     Column that contains the replicate. If <sample_col> not present,
-                                assume the sample name = "{cond_col}_R{rep_col}". This corresponds to
-                                the nf-core RNA-seq sample-sheet. [default: replicate]
+  --nfcore                      Indicate that the input samplesheet is from the nf-core RNA-seq ppipeline.
+                                Will merge entries from the same sample and infer the sample_id from `group` and `replicate`.
+                                If set, this option overrides `sample_col`.
   --condition_col=<cond_col>    Column in sample annotation that contains the condition [default: group]
   --sample_col=<sample_col>     Column in sample annotation that contains the sample names
-                                (needs to match the colnames of the count table). Overrides replicate_col.
+                                (needs to match the colnames of the count table). [default: sample]
   --paired_grp=<paired_grp>     Column that conatins the name of the paired samples, when dealing with
                                 paired data.
+  --covariate_formula=<formula> Formula to model additional covariates (need to be columns in the samplesheet)
+                                that will be appended to the formula built from `condition_col`.
+                                E.g. `+ age + sex`. Per default, no covariates are modelled.
   --plot_title=<title>          Title shown above plots. Is built from contrast per default.
   --prefix=<prefix>             Results file prefix. Is built from contrasts per default.
   --fdr_cutoff=<fdr>            False discovery rate for GO analysis and volcano plots [default: 0.1]
@@ -30,6 +33,7 @@ Optional options:
   --gtf_file=<gtf>              Path to the GTF file used for featurecounts. If specified, a Biotype QC
                                 will be performed.
   --gene_id_type=<id_type>      Type of the identifier in the `gene_id` column compatible with AnnotationDbi [default: ENSEMBL]
+  --n_cpus=<n_cpus>             Number of cores to use for DESeq2 [default: 1]
 ' -> doc
 
 library("conflicted")
@@ -38,6 +42,7 @@ arguments = docopt(doc, version = "0.1")
 
 print(arguments)
 
+library("BiocParallel")
 library("DESeq2")
 library("IHW")
 library("org.Hs.eg.db")
@@ -61,7 +66,6 @@ remove_ensg_version = function(x) gsub("\\.[0-9]*$", "", x)
 
 #### Get parameters from docopt
 
-
 # Input and output
 sampleAnnotationCSV <- arguments$sample_sheet
 readCountFile <- arguments$count_table
@@ -73,11 +77,12 @@ prefix <- arguments$prefix
 plot_title <- arguments$plot_title
 
 # Sample information and contrasts
+nfcore = arguments$nfcore
 cond_col = arguments$condition_col
-replicate_col = arguments$replicate_col
 sample_col = arguments$sample_col
 contrast = c(cond_col, arguments$c1, arguments$c2)
 gene_id_type = arguments$gene_id_type
+covariate_formula = arguments$covariate_formula
 
 # Cutoff
 fdr_cutoff = as.numeric(arguments$fdr_cutoff)
@@ -86,68 +91,74 @@ fc_cutoff = as.numeric(arguments$fc_cutoff)
 # GTF for Biotype QC
 gtf_file = arguments$gtf_file
 
-# ### Testdata
-# sampleAnnotationCSV = "testdata/sampleTableN.csv"
-# readCountFile = "testdata/merged_gene_counts.txt"
-# results_dir = "out"
-# contrast = c("treatment", "PFK158", "DMSO")
-# cond_col = "treatment"
-# sample_col = "sample"
-# replicate_col = "replicate"
-# gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
+# Other
+n_cpus = as.numeric(arguments$n_cpus)
 
-# sampleAnnotationCSV = "../../../tables/rnaseq_samplesheet.csv"
-# readCountFile = "/data/projects/2021/VSOPMonocytesBerlin/10_rnaseq_pipeline/star_salmon/salmon.merged.gene_counts.tsv"
+# # Testdata
+# ## Example1
+sampleAnnotationCSV = "testdata/example1/sampleTableN.csv"
+readCountFile = "testdata/example1/merged_gene_counts.txt"
+results_dir = "out"
+contrast = c("treatment", "PFK158", "DMSO")
+cond_col = "treatment"
+paired_grp = NULL
+covariate_formula = ""
+nfcore=FALSE
+gene_id_type = "ENSEMBL"
+sample_col = "sample"
+gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
+
+# ## example_nfcore
+# sampleAnnotationCSV = "testdata/example_nfcore/rnaseq_samplesheet.csv"
+# readCountFile = "testdata/example_nfcore/salmon.merged.gene_counts.subset.tsv"
 # results_dir = "/home/sturm/Downloads/tmp_out"
+# nfcore = TRUE
 # paired_grp = "donor"
 # prefix = NULL
 # plot_title = NULL
 # cond_col = "group"
-# replicate_col = "replicate"
 # sample_col = NULL
-# contrast = c("group", "VSOP", "Control")
+# contrast = c("group", "grpA", "grpB")
 # fdr_cutoff = 0.1
 # fc_cutoff = 1
 # gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
 
 ############### Sanitize parameters and read input data
+register(MulticoreParam(workers = n_cpus))
+
 if (is.null(plot_title)) {
   plot_title = paste0(contrast[[2]], " vs. ", contrast[[3]])
 }
-
 if (is.null(prefix)) {
   prefix = paste0(contrast[[2]], "_", contrast[[3]])
 }
-
+if (is.null(covariate_formula)) {
+  covariate_formula = ""
+}
 
 if(is.null(paired_grp)) {
-  design_formula <- as.formula(paste0("~", cond_col))
+  design_formula <- as.formula(paste0("~", cond_col, covariate_formula))
 } else {
-  design_formula <- as.formula(paste0("~", paired_grp , " + ", cond_col))
+  design_formula <- as.formula(paste0("~", paired_grp , " + ", cond_col, covariate_formula))
 }
 
 sampleAnno <- read_csv(sampleAnnotationCSV) %>%
   filter(get(cond_col) %in% contrast[2:3])
 
-
 # Add sample col based on condition and replicate if sample col is not explicitly specified
-if(is.null(sample_col)) {
+# and make samplesheet distinct (in case the 'merge replicates' functionality was used).
+if(nfcore) {
   sample_col = "sample"
-  sampleAnno = sampleAnno %>% mutate(sample=paste0(sampleAnno[[cond_col]], "_R", sampleAnno[[replicate_col]]))
+  sampleAnno = sampleAnno %>%
+    select(-fastq_1, -fastq_2) %>%
+    mutate(sample=paste0(sampleAnno[[cond_col]], "_R", sampleAnno[[replicate_col]])) %>%
+    distinct()
 }
-
-# distinct is required when the nf-core/rnaseq feature of mergings samples from the same lane is used.
-# replicate col is not needed here as that's already included in sample_col, unless sample_col
-# is set manually, in which case we don't want replicate_col anyway.
-sampleAnno = sampleAnno %>%
-  select(!!cond_col, !!sample_col, !!paired_grp) %>%
-  distinct()
 
 count_mat <- read_tsv(readCountFile)
 if (gene_id_type == "ENSEMBL") {
   count_mat = count_mat %>% mutate(gene_id= remove_ensg_version(gene_id))
 }
-
 
 ensg_to_genesymbol = count_mat %>% select(gene_id, gene_name)
 ensg_to_desc = AnnotationDbi::select(org.Hs.eg.db, count_mat$gene_id %>% unique(), keytype = gene_id_type, columns = c("GENENAME")) %>%
@@ -156,7 +167,7 @@ ensg_to_desc = AnnotationDbi::select(org.Hs.eg.db, count_mat$gene_id %>% unique(
 count_mat = count_mat %>%
   select(c(gene_id, sampleAnno[[sample_col]])) %>%
   column_to_rownames("gene_id") %>%
-  round() # salmon does not necessarily contain intergers
+  round() # salmon does not necessarily contain integers
 
 
 ################# Start processing
@@ -183,7 +194,7 @@ write_tsv(counts(dds, normalized=TRUE) %>% as_tibble(rownames = "gene_id"), file
 dds[[cond_col]] = relevel( dds[[cond_col]], contrast[[3]])
 
 # run DESeq
-dds <- DESeq(dds)
+dds <- DESeq(dds, parallel = (n_cpus > 1))
 
 # get normalized counts
 nc <- counts(dds, normalized=T)
