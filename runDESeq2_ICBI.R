@@ -99,14 +99,19 @@ n_cpus = as.numeric(arguments$n_cpus)
 sampleAnnotationCSV = "testdata/example1/sampleTableN.csv"
 readCountFile = "testdata/example1/merged_gene_counts.txt"
 results_dir = "out"
-contrast = c("treatment", "PFK158", "DMSO")
-cond_col = "treatment"
 paired_grp = NULL
-covariate_formula = ""
+prefix = "example1"
+plot_title = NULL
 nfcore=FALSE
-gene_id_type = "ENSEMBL"
+cond_col = "treatment"
 sample_col = "sample"
+contrast = c("treatment", "PFK158", "DMSO")
+gene_id_type = "ENSEMBL"
+covariate_formula = ""
+fdr_cutoff = 0.1
+fc_cutoff = 1
 gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
+n_cpus = 1
 
 # ## example_nfcore
 # sampleAnnotationCSV = "testdata/example_nfcore/rnaseq_samplesheet.csv"
@@ -266,122 +271,85 @@ lapply(c("BP", "MF"), function(ontology) {
 })
 
 
-##### Run Pathway enrichment analysis
+##### Pathway enrichment analysis
 hgnc_to_entrez = AnnotationDbi::select(org.Hs.eg.db, resIHW %>% pull("gene_name") %>% unique(), keytype="SYMBOL", columns=c("ENTREZID"))
 resIHW_entrez = resIHW %>%  inner_join(hgnc_to_entrez, by=c("gene_name"="SYMBOL"))
 universe = resIHW_entrez %>% pull("ENTREZID") %>% unique()
 resIHWsig_fc_entrez <- resIHWsig_fc %>%  inner_join(hgnc_to_entrez, by=c("gene_name"="SYMBOL"))
-
 de_foldchanges <- resIHWsig_fc_entrez$log2FoldChange
 names(de_foldchanges) <- resIHWsig_fc_entrez$ENTREZID
 
-## Run kegg pathways enrichment analysis
-enrich_kegg <- enrichKEGG(gene         = resIHWsig_fc_entrez$ENTREZID,
-                          universe     = universe,
-                          organism     = 'hsa',
-                          pvalueCutoff = 0.05)
+ora_tests = list(
+  "KEGG"=function(genes, universe) {
+    enrich_kegg <- enrichKEGG(gene         = genes,
+                              universe     = universe,
+                              organism     = 'hsa',
+                              pvalueCutoff = 0.05)
 
-enrich_kegg_readable <- setReadable(enrich_kegg, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
-kegg_enrich_res_tab = enrich_kegg_readable@result %>% as_tibble()
-write_tsv(kegg_enrich_res_tab, file.path(results_dir, paste0(prefix, "_kegg_ernich.tsv")))
+    setReadable(enrich_kegg, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+  },
+  "Reactome"=function(genes, universe) {
+    enrichPathway(gene = genes,
+                  organism = "human",
+                  universe = universe,
+                  pvalueCutoff = 0.05,
+                  readable=TRUE)
+  },
+  "WikiPathway"=function(genes, universe) {
+    enrich_wp = enrichWP(gene = genes,
+             universe     = universe,
+             organism     = 'Homo sapiens',
+             pvalueCutoff = 0.05)
 
-if (min(kegg_enrich_res_tab$p.adjust) < 0.05) {
-  ## create a dotplot for enrichKEGG
-  p <- dotplot(enrich_kegg, showCategory=50)
-  ggsave(file.path(results_dir, paste0(prefix, "_kegg_enrich_dotplot.png")), plot = p, width = 10, height = 10)
+    setReadable(enrich_wp, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+  },
+  "GO_BP"=function(genes, universe) {
+    enrichGO(gene = genes,
+             universe = universe,
+             keyType = "ENTREZID",
+             OrgDb = org.Hs.eg.db,
+             ont = "BP",
+             pAdjustMethod = "BH",
+             qvalueCutoff = 0.05,
+             minGSSize = 10,
+             readable = TRUE)
+  },
+  "GO_MF"=function(genes, universe) {
+    enrichGO(gene = genes,
+             universe = universe,
+             keyType = "ENTREZID",
+             OrgDb = org.Hs.eg.db,
+             ont = "MF",
+             pAdjustMethod = "BH",
+             qvalueCutoff = 0.05,
+             minGSSize = 10,
+             readable = TRUE)
+  }
+)
 
-  ## create a cnetplot for erichKEGG
-  p <- cnetplot(enrich_kegg_readable,
-                categorySize="pvalue",
-                showCategory = 5,
-                foldChange=de_foldchanges,
-                vertex.label.font=6)
-  ggsave(file.path(results_dir, paste0(prefix, "_kegg_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
-} else {
-  print("Warning: No significant enrichment in kegg pathways")
-}
 
-## Run reactome pathways enrichment analysis
-enrich_reactome <- enrichPathway(gene = resIHWsig_fc_entrez$ENTREZID,
-                                 organism = "human",
-                                 universe = universe,
-                                 pvalueCutoff = 0.05,
-                                 readable=TRUE)
-reactome_enrich_res_tab = enrich_reactome@result %>% as_tibble()
-write_tsv(reactome_enrich_res_tab, file.path(results_dir, paste0(prefix, "_reactome_ernich.tsv")))
+## KEGG pathways enrichment analysis
+lapply(names(ora_tests), function(ora_name) {
+  message(paste0("Performing ", ora_name, "ORA-test..."))
+  test_fun = ora_tests[[ora_name]]
+  ora_res = test_fun(resIHWsig_fc_entrez$ENTREZID, universe)
+  res_tab = as_tibble(ora_res@result)
+  write_tsv(res_tab, file.path(results_dir, paste0(prefix, "_ORA_", ora_name, ".tsv")))
+  if (min(res_tab$p.adjust) < 0.05) {
+    p = dotplot(ora_res, showCategory=40)
+    ggsave(file.path(results_dir, paste0(prefix, "_ORA_", ora_name, "_dotplot.png")), plot = p, width = 15, height = 10)
 
-if (min(reactome_enrich_res_tab$p.adjust) < 0.05) {
-  ## create a dotplot for enrichPathway (reactome)
-  p <- dotplot(enrich_reactome, showCategory=50)
-  ggsave(file.path(results_dir, paste0(prefix, "_reactome_enrich_dotplot.png")), plot = p, width = 15, height = 10)
+    p <- cnetplot(ora_res,
+                  categorySize="pvalue",
+                  showCategory = 5,
+                  foldChange=de_foldchanges,
+                  vertex.label.font=6)
+    ggsave(file.path(results_dir, paste0(prefix, "_ORA_", ora_name, "_cnetplot.png")), plot = p, width = 15, height = 12)
+  } else {
+    message(paste0("Warning: No significant enrichment in ", ora_name, " ORA analysis. "))
+  }
+})
 
-  ## create a cnetplot for erichPathway (reactome)
-  p <- cnetplot(enrich_reactome,
-                categorySize="pvalue",
-                showCategory = 5,
-                foldChange=de_foldchanges,
-                vertex.label.font=6)
-  ggsave(file.path(results_dir, paste0(prefix, "_reactome_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
-} else {
-  print("Warning: No significant enrichment in reactome pathways")
-}
-
-## Run wiki pathways enrichment analysis
-enrich_wp <- enrichWP(gene = resIHWsig_fc_entrez$ENTREZID,
-                      universe     = universe,
-                      organism     = 'Homo sapiens',
-                      pvalueCutoff = 0.05)
-
-enrich_wp_readable <- setReadable(enrich_wp, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
-wp_enrich_res_tab = enrich_wp_readable@result %>% as_tibble()
-write_tsv(wp_enrich_res_tab, file.path(results_dir, paste0(prefix, "_wp_ernich.tsv")))
-
-if (min(wp_enrich_res_tab$p.adjust) < 0.05) {
-  ## create a dotplot for enrichWP
-  p <- dotplot(enrich_wp, showCategory=50)
-  ggsave(file.path(results_dir, paste0(prefix, "_wp_enrich_dotplot.png")), plot = p, width = 10, height = 10)
-
-  ## create a cnetplot for erichWP
-  p <- cnetplot(enrich_wp_readable,
-                categorySize="pvalue",
-                showCategory = 5,
-                foldChange=de_foldchanges,
-                vertex.label.font=6)
-  ggsave(file.path(results_dir, paste0(prefix, "_wp_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
-} else {
-  print("Warning: No significant enrichment in wiki pathways")
-}
-
-## Run GO enrichment analysis
-enrich_go <- enrichGO(gene = resIHWsig_fc_entrez$ENTREZID,
-                universe = universe,
-                keyType = "ENTREZID",
-                OrgDb = org.Hs.eg.db,
-                ont = "BP",
-                pAdjustMethod = "BH",
-                qvalueCutoff = 0.05,
-                minGSSize = 10,
-                readable = TRUE)
-
-## Output results from GO analysis to a table
-go_enrich_res_tab <- enrich_go@result %>% as_tibble()
-write_tsv(go_enrich_res_tab, file.path(results_dir, paste0(prefix, "_go_ernich.tsv")))
-
-if (min(go_enrich_res_tab$p.adjust) < 0.05) {
-  ## create a dotplot for enrichGO
-  p <- dotplot(enrich_go, showCategory=50)
-  ggsave(file.path(results_dir, paste0(prefix, "_go_enrich_dotplot.png")), plot = p, width = 10, height = 10)
-
-  ## create a cnetplot for erichGO
-  p <- cnetplot(enrich_go,
-                categorySize="pvalue",
-                showCategory = 5,
-               foldChange=de_foldchanges,
-               vertex.label.font=6)
-  ggsave(file.path(results_dir, paste0(prefix, "_go_enrich_cnetplot.png")), plot = p, width = 15, height = 12)
-} else {
-  print("Warning: No significant enrichment in GO BP")
-}
 
 ########### PCA plot
 vsd <- vst(dds, blind=FALSE)
