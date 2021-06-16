@@ -17,6 +17,7 @@ test:
         ./runDESeq2_ICBI.R testdata/example1/sampleTableN.csv testdata/example1/merged_gene_counts.txt  --result_dir=out \
         --sample_col=sample --condition_col=overexpression \
         --c1=PFKFB3_S461E --c2=MOCK \
+        --genes_of_interest=testdata/example_nfcore/GoI.txt \
         --gtf_file=testdata/example1/gencode_subset.gtf
     - |
         ./runDESeq2_ICBI.R testdata/example1/sampleTableN.csv testdata/example1/merged_gene_counts.txt  --result_dir=out \
@@ -24,10 +25,12 @@ test:
         --c1=PFKFB3_S461E --c2=MOCK \
         --paired_grp=treatment \
         --covariate_formula="+numeric_covariate" \
+        --genes_of_interest=testdata/example_nfcore/GoI.txt \
         --gtf_file=testdata/example1/gencode_subset.gtf
     - |
         ./runDESeq2_ICBI.R testdata/example_nfcore/rnaseq_samplesheet.csv testdata/example_nfcore/salmon.merged.gene_counts.subset.tsv --result_dir=out \
         --sample_col=sample --nfcore \
         --c1=grpA --c2=grpB \
+        --genes_of_interest=testdata/example_nfcore/GoI.txt \
         --n_cpus=2
 
