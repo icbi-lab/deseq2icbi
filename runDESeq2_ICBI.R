@@ -35,6 +35,7 @@ Optional options:
   --gene_id_type=<id_type>      Type of the identifier in the `gene_id` column compatible with AnnotationDbi [default: ENSEMBL]
   --n_cpus=<n_cpus>             Number of cores to use for DESeq2 [default: 1]
   --skip_gsea                   Skip Gene-Set-Enrichment-Analysis step
+  --genes_of_interest=<genes>   File containing a list of genes to highlight in the volcano plot
 ' -> doc
 
 library("conflicted")
@@ -96,6 +97,8 @@ gtf_file = arguments$gtf_file
 n_cpus = as.numeric(arguments$n_cpus)
 skip_gsea = arguments$skip_gsea
 
+genes_of_interest = arguments$genes_of_interest
+
 # # Testdata
 # ## Example1
 # sampleAnnotationCSV = "testdata/example1/sampleTableN.csv"
@@ -105,6 +108,7 @@ skip_gsea = arguments$skip_gsea
 # prefix = "example1"
 # plot_title = NULL
 # nfcore=FALSE
+# nfcore=TRUE
 # cond_col = "treatment"
 # sample_col = "sample"
 # contrast = c("treatment", "PFK158", "DMSO")
@@ -112,14 +116,17 @@ skip_gsea = arguments$skip_gsea
 # covariate_formula = ""
 # fdr_cutoff = 0.1
 # fc_cutoff = 1
+# fc_cutoff = 0.585
 # gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
 # n_cpus = 1
+# n_cpus = 8
 # skip_gsea = FALSE
 
 # ## example_nfcore
 # sampleAnnotationCSV = "testdata/example_nfcore/rnaseq_samplesheet.csv"
 # readCountFile = "testdata/example_nfcore/salmon.merged.gene_counts.subset.tsv"
 # results_dir = "/home/sturm/Downloads/tmp_out"
+# results_dir = "./test"
 # nfcore = TRUE
 # paired_grp = "donor"
 # prefix = NULL
@@ -129,7 +136,6 @@ skip_gsea = arguments$skip_gsea
 # contrast = c("group", "grpA", "grpB")
 # fdr_cutoff = 0.1
 # fc_cutoff = 1
-# gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
 
 ############### Sanitize parameters and read input data
 register(MulticoreParam(workers = n_cpus))
@@ -159,7 +165,6 @@ if(nfcore) {
   sample_col = "sample"
   sampleAnno = sampleAnno %>%
     select(-fastq_1, -fastq_2) %>%
-    mutate(sample=paste0(sampleAnno[[cond_col]], "_R", sampleAnno[["replicate"]])) %>%
     distinct()
 }
 
@@ -177,6 +182,16 @@ count_mat = count_mat %>%
   column_to_rownames("gene_id") %>%
   round() # salmon does not necessarily contain integers
 
+
+save_plot <- function(filename, p, width=NULL, height=NULL) {
+  if (!is.null(width) && !is.null(height)) {
+    ggsave(file.path(paste0(filename, ".png")), plot = p, width = width, height = height)
+    ggsave(file.path(paste0(filename, ".svg")), plot = p, width = width, height = height)
+  } else {
+    ggsave(file.path(paste0(filename, ".png")), plot = p)
+    ggsave(file.path(paste0(filename, ".svg")), plot = p)
+  }
+}
 
 ################# Start processing
 dds <- DESeqDataSetFromMatrix(countData = count_mat,
@@ -245,7 +260,8 @@ if(!is.null(gtf_file)) {
 
   p = biotype_counts %>%
     ggplot(aes(x=gene_type, y=n)) + geom_bar(stat='identity') + theme_bw() + coord_flip()
-  ggsave(file.path(results_dir, paste0(prefix, "_biotype_counts.png")), p)
+
+  save_plot(file.path(results_dir, paste0(prefix, "_biotype_counts")), p)
   write_tsv(biotype_counts, file.path(results_dir, paste0(prefix, "_biotype_counts.tsv")))
 
 }
@@ -342,6 +358,16 @@ ora_tests = list(
 # Warmup GO database - work around https://github.com/YuLab-SMU/clusterProfiler/issues/207
 ._ = enrichGO(universe[1], OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", universe = universe)
 
+get_heatplot_dims <- function(p) {
+  nr_gene <- length(unique(p$data$Gene))
+  nr_cat <- length(unique(p$data$categoryID))
+  
+  hp_width = min(nr_gene * 0.25, 40)
+  hp_height = min(nr_cat * 0.25, 40)
+  
+  return(c(hp_width, hp_height))
+}
+
 bplapply(names(ora_tests), function(ora_name) {
   message(paste0("Performing ", ora_name, " ORA-test..."))
   test_fun = ora_tests[[ora_name]]
@@ -351,18 +377,28 @@ bplapply(names(ora_tests), function(ora_name) {
   write_tsv(res_tab, file.path(results_dir, paste0(prefix, "_ORA_", ora_name, ".tsv")))
   if (min(res_tab$p.adjust) < 0.05) {
     p = dotplot(ora_res, showCategory=40)
-    ggsave(file.path(results_dir, paste0(prefix, "_ORA_", ora_name, "_dotplot.png")), plot = p, width = 15, height = 10)
+
+    save_plot(file.path(results_dir, paste0(prefix, "_ORA_", ora_name, "_dotplot")), p, width = 15, height = 10)
 
     p <- cnetplot(ora_res,
                   categorySize="pvalue",
                   showCategory = 5,
                   foldChange=de_foldchanges,
                   vertex.label.font=6)
-    ggsave(file.path(results_dir, paste0(prefix, "_ORA_", ora_name, "_cnetplot.png")), plot = p, width = 15, height = 12)
+
+    save_plot(file.path(results_dir, paste0(prefix, "_ORA_", ora_name, "_cnetplot")), p, width = 15, height = 12)
+
+    p <- heatplot(ora_res, foldChange=de_foldchanges, showCategory=40) +
+      scale_fill_gradient2(midpoint=0, low="blue4", mid="white", high="red4" )
+    hp_dims <- get_heatplot_dims(p)
+
+    save_plot(file.path(results_dir, paste0(prefix, "_ORA_", ora_name, "_heatplot")), p, width = hp_dims[1], height = hp_dims[2])
+
   } else {
     message(paste0("Warning: No significant enrichment in ", ora_name, " ORA analysis. "))
   }
 })
+
 
 ## GSEA
 if(!skip_gsea) {
@@ -415,14 +451,25 @@ if(!skip_gsea) {
     write_tsv(res_tab, file.path(results_dir, paste0(prefix, "_GSEA_", gsea_name, ".tsv")))
     if (min(res_tab$p.adjust) < 0.05) {
       p = dotplot(gsea_res, showCategory=40)
-      ggsave(file.path(results_dir, paste0(prefix, "_GSEA_", gsea_name, "_dotplot.png")), plot = p, width = 15, height = 10)
+
+      save_plot(file.path(results_dir, paste0(prefix, "_GSEA_", gsea_name, "_dotplot")), p, width = 15, height = 10)
+
 
       p <- cnetplot(gsea_res,
                     categorySize="pvalue",
                     showCategory = 5,
                     foldChange=de_foldchanges,
                     vertex.label.font=6)
-      ggsave(file.path(results_dir, paste0(prefix, "_GSEA_", gsea_name, "_cnetplot.png")), plot = p, width = 15, height = 12)
+
+      save_plot(file.path(results_dir, paste0(prefix, "_GSEA_", gsea_name, "_cnetplot")), p, width = 15, height = 12)
+
+      # GSEA generates to long gene lists so that the heatplot gets to overloaded
+      # p <- heatplot(gsea_res, foldChange=de_foldchanges, showCategory=40) +
+      #   scale_fill_gradient2(midpoint=0, low="blue4", mid="white", high="red4" )
+      #
+      # hp_dims <- get_heatplot_dims(p)
+      #
+      # ggsave(file.path(results_dir, paste0(prefix, "_GSEA_", gsea_name, "_heatplot.png")), plot = p, width = hp_dims[1], height = hp_dims[2])
     } else {
       message(paste0("Warning: No significant enrichment in ", gsea_name, " GSEA analysis. "))
     }
@@ -440,12 +487,12 @@ p <- plotPCA(vsd, intgroup=c(cond_col)) +
   ggtitle(paste0("PCA: ", plot_title)) +
   scale_color_brewer(type="qual", palette="Set1") +
   theme_bw()
-ggsave(file.path(results_dir, paste0(prefix, "_PCA.png")), plot = p)
+
+save_plot(file.path(results_dir, paste0(prefix, "_PCA")), p)
 
 
 ########## Volcano plot
-png(filename =  file.path(results_dir, paste0(prefix, "_volcano.png")), width = 650, height = 650, units = "px")
-EnhancedVolcano(resIHW,
+p <- EnhancedVolcano(resIHW,
                 lab = resIHW$gene_name,
                 x = "log2FoldChange",
                 y = "pvalue",
@@ -453,11 +500,13 @@ EnhancedVolcano(resIHW,
                 FCcutoff = fc_cutoff,
                 subtitle = "",
                 legendPosition = "right",
+                caption = paste0("fold change cutoff: ", round(2**fc_cutoff, 1), ", p-value cutoff: ", 1e-6),
                 title = plot_title)
-dev.off()
 
-png(filename =  file.path(results_dir, paste0(prefix, "_volcano_padj.png")), width = 650, height = 650, units = "px")
-EnhancedVolcano(resIHW,
+save_plot(file.path(results_dir, paste0(prefix, "_volcano")), p, width = 9, height = 7)
+
+
+p <- EnhancedVolcano(resIHW,
                 lab = resIHW$gene_name,
                 x = "log2FoldChange",
                 y = "padj",
@@ -465,5 +514,32 @@ EnhancedVolcano(resIHW,
                 FCcutoff = fc_cutoff,
                 subtitle = "",
                 legendPosition = "right",
+                caption = paste0("fold change cutoff: ", round(2**fc_cutoff, 1), ", adj.p-value cutoff: ", fdr_cutoff),
                 title = plot_title)
-dev.off()
+
+save_plot(file.path(results_dir, paste0(prefix, "_volcano_padj")), p, width = 9, height = 7)
+
+
+if(!is.null(genes_of_interest)) {
+  goi = read_tsv(genes_of_interest, comment = "#")
+  goi = goi %>% filter(gene_name %in% de_res_list$IHWsigGenes$gene_name)
+  p <- EnhancedVolcano(resIHW,
+                  lab = resIHW$gene_name,
+                  selectLab = goi$gene_name,
+                  labSize = 4,
+                  drawConnectors = TRUE,
+                  colConnectors = 'black',
+                  x = "log2FoldChange",
+                  y = "padj",
+                  pCutoff = fdr_cutoff,
+                  FCcutoff = fc_cutoff,
+                  subtitle = "",
+                  legendPosition = "right",
+                  caption = paste0("fold change cutoff: ", round(2**fc_cutoff, 1), ", adj.p-value cutoff: ", fdr_cutoff),
+                  maxoverlapsConnectors = Inf,
+                  title = plot_title)
+
+  save_plot(file.path(results_dir, paste0(prefix, "_volcano_padj_GoI.png")), p, width = 9, height = 7)
+
+}
+
