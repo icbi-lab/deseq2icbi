@@ -37,7 +37,8 @@ Optional options:
                                 will be performed.
   --gene_id_type=<id_type>      Type of the identifier in the `gene_id` column compatible with AnnotationDbi [default: ENSEMBL]
   --n_cpus=<n_cpus>             Number of cores to use for DESeq2 [default: 1]
-  --skip_gsea                   Skip Gene-Set-Enrichment-Analysis step 
+  --skip_gsea                   Skip Gene-Set-Enrichment-Analysis step
+  --genes_of_interest=<genes>   File containing a list of genes to highlight in the volcano plot
 ```
 
 The R script takes the merged count table from the nf-core rnaseq pipeline as input (featurecounts.merged.counts.tsv, see example).
