@@ -539,7 +539,7 @@ if(!is.null(genes_of_interest)) {
                   maxoverlapsConnectors = Inf,
                   title = plot_title)
 
-  save_plot(file.path(results_dir, paste0(prefix, "_volcano_padj_GoI.png")), p, width = 9, height = 7)
+  save_plot(file.path(results_dir, paste0(prefix, "_volcano_padj_GoI")), p, width = 9, height = 7)
 
 }
 
