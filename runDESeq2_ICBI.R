@@ -241,7 +241,7 @@ resIHWsig <- resIHW %>% filter(padj < fdr_cutoff)
 resIHWsig_fc <- resIHWsig %>% filter(abs(log2FoldChange) > fc_cutoff)
 
 # Stop here if we do not have any DE genes
-if(nrow(resIHWsig_fc) < 0) {
+if(nrow(resIHWsig_fc) < 1) {
   stop("NO significant DE genes found: check fc_cutoff and fdr_cutoff!")
 }
 
